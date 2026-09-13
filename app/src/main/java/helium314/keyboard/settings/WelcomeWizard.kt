@@ -279,6 +279,7 @@ private fun ColumnScope.StepCard(
     action: () -> Unit,
 ) {
     Card(
+        modifier = Modifier.fillMaxWidth(),
         shape = MaterialTheme.shapes.large,
         colors = CardDefaults.cardColors(
             containerColor = MaterialTheme.colorScheme.surfaceContainer,
@@ -334,6 +335,7 @@ private fun OptionalCard(
 ) {
     Card(
         onClick = onClick,
+        modifier = Modifier.fillMaxWidth(),
         shape = MaterialTheme.shapes.large,
         colors = CardDefaults.cardColors(
             containerColor = MaterialTheme.colorScheme.surfaceContainerLow,

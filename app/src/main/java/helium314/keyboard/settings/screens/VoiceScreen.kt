@@ -123,15 +123,18 @@ fun VoiceScreen(
                 // What turns speech into text: the model that does it, the engine
                 // choice between it and Google's, and how dictation behaves.
                 PreferenceCategory(stringResource(R.string.wk_cat_voice_to_text))
-                // The model and the engine that uses it are one decision, so they
-                // share one container: two groups stacked flush met at a shared
-                // edge and their radii read as a pinch, not as two cards.
+                // The model, the engine that uses it and how dictation behaves are
+                // one subject, so they share one container. Two groups stacked flush
+                // met at a shared edge and their radii read as a pinch rather than as
+                // two cards — and the second card carried no heading of its own, so
+                // there was nothing to say whether it still belonged to this one.
                 PreferenceGroup {
                     VoiceModelsSection(only = ModelKind.FINAL_ASR, inOwnGroup = false)
                     PreferenceGroupDivider()
                     EngineChoice()
+                    PreferenceGroupDivider()
+                    SettingsSections(speech, inOwnGroup = false)
                 }
-                SettingsSections(speech)
 
                 // What happens to the text afterwards, under the model that does it.
                 // The model and the switch that uses it. The cleanup below is
