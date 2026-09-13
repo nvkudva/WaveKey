@@ -5,6 +5,7 @@ import android.content.Context
 import android.content.res.Configuration
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.gestures.awaitEachGesture
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
@@ -37,6 +38,11 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.platform.LocalConfiguration
+import androidx.compose.ui.input.pointer.PointerEventPass
+import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.semantics.disabled
+import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.semantics.stateDescription
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.tooling.preview.Preview
@@ -134,7 +140,10 @@ fun AppearanceScreen(
                         SettingsActivity.settingsContainer[Settings.PREF_FONT_SCALE]?.Preference()
                         // Stays mounted when hints are off: a row that reads
                         // unavailable is easier to find again than one that vanished.
-                        Dimmed(prefs.getBoolean(Settings.PREF_SHOW_HINTS, Defaults.PREF_SHOW_HINTS)) {
+                        Dimmed(
+                            prefs.getBoolean(Settings.PREF_SHOW_HINTS, Defaults.PREF_SHOW_HINTS),
+                            stringResource(R.string.wk_needs_hints),
+                        ) {
                             SettingsActivity.settingsContainer[Settings.PREF_HINT_FONT_SCALE]?.Preference()
                         }
                         SettingsActivity.settingsContainer[Settings.PREF_SPACE_BAR_TEXT]?.Preference()
@@ -206,8 +215,41 @@ private fun ThemeRow(editNight: Boolean) {
 
 /** A row that is unavailable right now: shown, but visibly not in play. */
 @Composable
-fun Dimmed(enabled: Boolean, content: @Composable () -> Unit) {
-    Box(Modifier.alpha(if (enabled) 1f else 0.38f)) { content() }
+fun Dimmed(enabled: Boolean, reason: String? = null, content: @Composable () -> Unit) {
+    if (enabled) {
+        Box { content() }
+        return
+    }
+    // A row at 38% alpha that still answers a tap is the worst of both: it looks
+    // unavailable and behaves available. Swallow the gesture, tell TalkBack the
+    // control is disabled, and say why — a reason is the only thing that makes a
+    // dimmed row better than a missing one, which is why it is kept mounted.
+    Column {
+        Box(
+            Modifier
+                .alpha(0.38f)
+                .pointerInput(Unit) {
+                    awaitEachGesture {
+                        while (true) {
+                            awaitPointerEvent(PointerEventPass.Initial).changes
+                                .forEach { it.consume() }
+                        }
+                    }
+                }
+                .semantics(mergeDescendants = true) {
+                    disabled()
+                    if (reason != null) stateDescription = reason
+                },
+        ) { content() }
+        if (reason != null) {
+            Text(
+                reason,
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                modifier = Modifier.padding(start = 16.dp, end = 16.dp, bottom = 8.dp),
+            )
+        }
+    }
 }
 
 /** Portrait, landscape and — on a foldable — the two folded variants. */
@@ -273,7 +315,7 @@ private fun SizeAndSpacing() {
             Defaults.PREF_SIDE_PADDING_SCALE[findIndexOfDefaultSetting(orientation.landscape, split, orientation.folded)], 0f..3f)
         ScaleSlider(stringResource(R.string.prefs_bottom_padding_scale), Settings.PREF_BOTTOM_PADDING_SCALE_PREFIX,
             2, index, Defaults.PREF_BOTTOM_PADDING_SCALE[index], 0f..5f)
-        Dimmed(bordered) {
+        Dimmed(bordered, stringResource(R.string.wk_needs_borders)) {
             ScaleSlider(stringResource(R.string.prefs_key_gap_scale), Settings.PREF_KEY_GAP_SCALE_PREFIX,
                 2, index, Defaults.PREF_KEY_GAP_SCALE[index], 0.5f..2.5f, enabled = bordered)
         }
@@ -282,7 +324,7 @@ private fun SizeAndSpacing() {
             key = orientation.splitKey,
             default = Defaults.PREF_ENABLE_SPLIT_KEYBOARD,
         ) { KeyboardSwitcher.getInstance().setThemeNeedsReload() }
-        Dimmed(split) {
+        Dimmed(split, stringResource(R.string.wk_needs_split)) {
             ScaleSlider(stringResource(R.string.wk_split_spacer), Settings.PREF_SPLIT_SPACER_SCALE_PREFIX,
                 2, index, Defaults.PREF_SPLIT_SPACER_SCALE[index], 0.5f..2f, enabled = split)
         }

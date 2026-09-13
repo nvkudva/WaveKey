@@ -51,6 +51,8 @@ import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.input.TextFieldValue
 import androidx.compose.ui.tooling.preview.Preview
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.unit.dp
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.core.content.edit
@@ -436,25 +438,30 @@ private fun KeyChip(key: ToolbarKey, modifier: Modifier = Modifier, locked: Bool
     val iconId = KeyboardIconsSet.iconIdsOfStyle(
         ctx.prefs().getString(Settings.PREF_ICON_STYLE, Defaults.PREF_ICON_STYLE(ctx.prefs()))
     )[key.name.lowercase(Locale.US)]
+    // The chip is a picture of a key with no label beside it, so its description
+    // is the only name it has. ToolbarKey.name is the enum — SELECT_WORD — which
+    // is the developer's name for it, not the one on the settings row above.
+    val label = key.name.lowercase(Locale.US).getStringResourceOrName("", ctx)
     Box(
         modifier.size(CHIP)
             .clip(RoundedCornerShape(10.dp))
             .background(
                 if (locked) MaterialTheme.colorScheme.primaryContainer
                 else MaterialTheme.colorScheme.surfaceContainerHigh
-            ),
+            )
+            .semantics(mergeDescendants = true) { contentDescription = label },
         contentAlignment = Alignment.Center
     ) {
         if (iconId != null)
             Icon(
                 painterResourceCompat(iconId, 30),
-                key.name,
+                null,
                 Modifier.size(22.dp),
                 tint = if (locked) MaterialTheme.colorScheme.onPrimaryContainer
                     else MaterialTheme.colorScheme.onSurfaceVariant
             )
         else
-            Text(key.name.take(2), style = MaterialTheme.typography.labelSmall)
+            Text(label.take(2), style = MaterialTheme.typography.labelSmall)
     }
 }
 

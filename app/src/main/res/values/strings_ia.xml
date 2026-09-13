@@ -95,6 +95,11 @@
     <string name="wk_toolbar_drag_hint">Drag a key to arrange it, drag it out of the row to switch it off, long-press it for everything else.</string>
     <string name="wk_toolbar_overflow">Hatched keys sit behind the chevron at the end of the strip.</string>
     <string name="wk_key_locked">Always on the strip — cannot be removed</string>
+    <!-- WaveKey: why a row is showing but inert. Spoken by TalkBack, and shown
+         under the row it applies to. -->
+    <string name="wk_needs_hints">Off while key hints are off</string>
+    <string name="wk_needs_borders">Off while key borders are off</string>
+    <string name="wk_needs_split">Off while the split keyboard is off</string>
     <string name="wk_key_pinned">Keep visible when the toolbar collapses</string>
     <string name="wk_key_lights_up">Lights up</string>
     <string name="wk_key_take_off">Take off strip</string>
