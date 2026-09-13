@@ -64,13 +64,35 @@ class LlmRefinerClient(context: Context) : RemoteRefiner {
     @Volatile
     private var bound = false
 
+    /**
+     * The bind in flight, written by [connect] and read by the framework's
+     * callbacks on another thread — so every access goes through [pendingLock].
+     *
+     * The lock buys two things a volatile would not. The callback is guaranteed
+     * to see the deferred that the connect which caused it installed; and a
+     * disconnect cannot clear a bind that belongs to a later connect, which
+     * would leave that one waiting out its whole timeout for a callback whose
+     * deferred had already been dropped.
+     */
+    private val pendingLock = Any()
     private var pending: CompletableDeferred<ILlmRefiner?>? = null
+
+    /** Takes the bind in flight, so exactly one caller completes it. */
+    private fun takePending(): CompletableDeferred<ILlmRefiner?>? =
+        synchronized(pendingLock) { pending.also { pending = null } }
+
+    private fun setPending(deferred: CompletableDeferred<ILlmRefiner?>?) =
+        synchronized(pendingLock) { pending = deferred }
+
+    /** Clears [deferred] only if it is still the one in flight. */
+    private fun clearPending(deferred: CompletableDeferred<ILlmRefiner?>) =
+        synchronized(pendingLock) { if (pending === deferred) pending = null }
 
     private val connection = object : ServiceConnection {
         override fun onServiceConnected(name: ComponentName?, service: IBinder?) {
             val stub = ILlmRefiner.Stub.asInterface(service)
             binder = stub
-            pending?.complete(stub)
+            takePending()?.complete(stub)
         }
 
         override fun onServiceDisconnected(name: ComponentName?) {
@@ -78,14 +100,11 @@ class LlmRefinerClient(context: Context) : RemoteRefiner {
             // whole arrangement exists to make survivable.
             Log.w(TAG, "refiner process went away")
             binder = null
-            pending?.complete(null)
-            pending = null
+            takePending()?.complete(null)
         }
     }
 
-    override suspend fun preload() {
-        call { it.preload() }
-    }
+    override suspend fun preload(): Boolean = call { it.preload() } == true
 
     override suspend fun refine(text: String, timeoutMs: Long): String? =
         call { it.refine(text, timeoutMs) }
@@ -133,20 +152,20 @@ class LlmRefinerClient(context: Context) : RemoteRefiner {
         return connectLock.withLock {
             binder?.let { return@withLock it }
             val deferred = CompletableDeferred<ILlmRefiner?>()
-            pending = deferred
+            setPending(deferred)
             val intent = Intent(appContext, LlmRefinerService::class.java)
             val didBind = runCatching {
                 appContext.bindService(intent, connection, Context.BIND_AUTO_CREATE)
             }.getOrDefault(false)
             if (!didBind) {
                 Log.w(TAG, "could not bind the refiner process")
-                pending = null
+                clearPending(deferred)
                 runCatching { appContext.unbindService(connection) }
                 return@withLock null
             }
             bound = true
             val result = withTimeoutOrNull(BIND_TIMEOUT_MS) { deferred.await() }
-            pending = null
+            clearPending(deferred)
             if (result == null) Log.w(TAG, "refiner process did not start in time")
             result
         }
@@ -167,7 +186,8 @@ class LlmRefinerClient(context: Context) : RemoteRefiner {
 
 /** What the keyboard calls; implemented over binder, faked in tests. */
 interface RemoteRefiner {
-    suspend fun preload()
+    /** True when the model is loaded and ready; false when there is nothing to load. */
+    suspend fun preload(): Boolean
     suspend fun refine(text: String, timeoutMs: Long = 3_000L): String?
     suspend fun correct(text: String, timeoutMs: Long = CORRECT_TIMEOUT_MS): SmartOutput
 

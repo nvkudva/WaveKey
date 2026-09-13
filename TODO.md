@@ -48,9 +48,9 @@
 - [ ] Architecture review (#4, high): VoiceController carries a second, ad-hoc dictation state machine for the Google backend — fold it into the one in :core.
 - [x] Architecture review (#5, high): VoiceEngines is a process-wide mutable singleton whose release can be refused and is never retried — make release idempotent and retried, or own the engine per session.
 - [x] Architecture review (#6, high): :llm binder calls are blocking and un-cancellable, so a caller timeout leaks the thread and the claim — make the AIDL calls oneway with a callback, or cancel the claim on timeout.
-- [ ] Architecture review (#7, medium): LlmRefinerClient.pending is unsynchronized across the binder callback and the connect path — confine it to one dispatcher or guard it.
+- [x] Architecture review (#7, medium): LlmRefinerClient.pending is unsynchronized across the binder callback and the connect path — now behind a lock, and a disconnect can only clear the bind it belongs to.
 - [ ] Architecture review (#8, medium): pack installation state is per-process with no invalidation across the process boundary — broadcast or re-read it after an install.
 - [ ] Architecture review (#9, medium): LatinIME reaches past :voice straight into :core — route those calls through the :voice facade.
 - [ ] Architecture review (#10, medium): the app-side controllers are bound to the concrete LatinIME and cannot be tested — depend on a narrow host interface instead.
 - [ ] Architecture review (#11, low): failures cross the process boundary as Bundle string keys rather than a typed result — define a parcelable result type.
-- [ ] Architecture review (#12, low): preload()'s return value is discarded, so model warm-up failures are invisible — surface or log it.
+- [x] Architecture review (#12, low): preload()'s return value is discarded, so model warm-up failures are invisible — RemoteRefiner.preload returns Boolean and the caller logs a refiner that warmed nothing.

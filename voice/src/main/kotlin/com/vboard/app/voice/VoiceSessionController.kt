@@ -313,6 +313,11 @@ class VoiceSessionController(
                         scope.launch(Dispatchers.IO) {
                             runCatching { VoiceEngines.loadRefiner(service, app)?.preload() }
                                 .onFailure { Log.w(TAG, "refiner preload failed", it) }
+                                // A refiner that answered "no" warmed nothing, and the
+                                // first refinement will pay the model init inside its
+                                // own budget — which is the timeout this call exists to
+                                // avoid. Silence made that look like a slow model.
+                                .onSuccess { if (it == false) Log.w(TAG, "refiner did not warm up") }
                         }
                     }
                     dispatch(Event.ModelsReady)
