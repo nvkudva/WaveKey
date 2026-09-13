@@ -40,9 +40,9 @@ class ManifestProcessSplitTest {
     fun `INTERNET is declared only with the reviewed scoping marker`() {
         if (!manifest.contains("android.permission.INTERNET")) return
         assertTrue(
-            "INTERNET is declared without the supervoiceboard:internet-scoped marker that " +
+            "INTERNET is declared without the wavekey:internet-scoped marker that " +
                 "records why, and which process is allowed to use it",
-            manifest.contains("supervoiceboard:internet-scoped"),
+            manifest.contains("wavekey:internet-scoped"),
         )
     }
 

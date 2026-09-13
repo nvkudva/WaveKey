@@ -19,7 +19,7 @@ SPDX-License-Identifier: Apache-2.0 AND GPL-3.0-only
 
          RECORD_AUDIO is the product: the IME process listens.
 
-         supervoiceboard:internet-scoped — INTERNET exists only so models can be
+         wavekey:internet-scoped — INTERNET exists only so models can be
          downloaded, and every component that touches the network runs in the
          `:ui` process (WorkManager's workers are pinned there by the
          Configuration.Provider in App.kt). Android has no way to scope a

@@ -32,7 +32,7 @@ android {
     compileSdk = 36
 
     defaultConfig {
-        applicationId = "com.supervoiceboard.app" // WaveKey: rebrand; namespace stays helium314.keyboard.* for upstream rebaseability
+        applicationId = "com.wavekey.keyboard" // WaveKey: rebrand; namespace stays helium314.keyboard.* for upstream rebaseability
         minSdk = 24
         targetSdk = 36
         // WaveKey's own numbering, not HeliBoard's. The fork carries upstream
@@ -56,13 +56,19 @@ android {
     // outside the repo; without it (CI, a fresh clone) the release build still
     // works and comes out unsigned, exactly as upstream's does.
     signingConfigs {
-        create("supervoiceboard") {
-            val store = file(System.getProperty("user.home") + "/.supervoiceboard/release.jks")
+        create("wavekey") {
+            // The keystore moved with the name; the old path and the old SVB_*
+            // variables still work, so a machine or a CI secret that has not
+            // caught up yet keeps signing instead of silently producing an
+            // unsigned APK.
+            val home = System.getProperty("user.home")
+            val store = file("$home/.wavekey/release.jks")
+                .takeIf { it.exists() } ?: file("$home/.supervoiceboard/release.jks")
             if (store.exists()) {
                 storeFile = store
-                storePassword = System.getenv("SVB_STORE_PASSWORD") ?: "supervoiceboard"
-                keyAlias = "supervoiceboard"
-                keyPassword = System.getenv("SVB_KEY_PASSWORD") ?: "supervoiceboard"
+                storePassword = System.getenv("WAVEKEY_STORE_PASSWORD") ?: System.getenv("SVB_STORE_PASSWORD") ?: "wavekey"
+                keyAlias = System.getenv("WAVEKEY_KEY_ALIAS") ?: "supervoiceboard"
+                keyPassword = System.getenv("WAVEKEY_KEY_PASSWORD") ?: System.getenv("SVB_KEY_PASSWORD") ?: "wavekey"
             }
         }
     }
@@ -86,8 +92,8 @@ android {
             isDebuggable = false
             isJniDebuggable = false
             // WaveKey: sign when the local keystore is present
-            signingConfigs.getByName("supervoiceboard").storeFile?.let {
-                signingConfig = signingConfigs.getByName("supervoiceboard")
+            signingConfigs.getByName("wavekey").storeFile?.let {
+                signingConfig = signingConfigs.getByName("wavekey")
             }
         }
         debug {

@@ -581,3 +581,20 @@ Two things follow from this, beyond the one-line fix:
 R26's storage change stands on its own merits — a directBootAware IME should not
 keep its models in credential-encrypted storage — but it was not the cause of
 this, and the note there overstated the evidence.
+
+## R28 — continuous AI fix reads the whole field, on purpose
+
+`AiFixController.performFix` reads and rewrites the entire field on every pass,
+and `scheduleAutoFix` fires at each word boundary once a run is armed. TODO
+carried a proposal to narrow that to the changed word or sentence.
+
+Rejected. Words are not independent: a sentence's last word routinely decides
+the tense, the article or the comma three words back, and a pass that can only
+see what just changed cannot make that edit. The value of the feature is that it
+reads what the user actually wrote, all of it.
+
+What this accepts: a long message costs a full-field pass per word typed, and
+every pass can move the cursor. If that becomes the complaint, the answer is a
+longer idle before the pass and a diff-apply that leaves untouched spans alone —
+not a smaller window of text for the model to read.
+

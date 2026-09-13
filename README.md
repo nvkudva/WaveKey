@@ -129,13 +129,15 @@ required pack is installed.
 ### Release signing
 
 There is no runtime configuration. Two environment variables affect release builds only,
-and only when a keystore exists at `~/.supervoiceboard/release.jks`. Without that file the
-release build still succeeds and comes out unsigned.
+and only when a keystore exists at `~/.wavekey/release.jks` (the old
+`~/.supervoiceboard/release.jks` is still read if that one is absent). Without either
+file the release build still succeeds and comes out unsigned.
 
 | Variable | Required | What it is |
 |---|---|---|
-| `SVB_STORE_PASSWORD` | No | Keystore password for release signing |
-| `SVB_KEY_PASSWORD` | No | Key password for the `supervoiceboard` alias |
+| `WAVEKEY_STORE_PASSWORD` | No | Keystore password for release signing. `SVB_STORE_PASSWORD` still works |
+| `WAVEKEY_KEY_PASSWORD` | No | Key password for the signing alias. `SVB_KEY_PASSWORD` still works |
+| `WAVEKEY_KEY_ALIAS` | No | Signing alias; defaults to `supervoiceboard`, which is what existing keystores hold |
 
 ---
 
