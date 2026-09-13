@@ -249,67 +249,12 @@ private fun PackRow(
             },
         )
     }
-    val body: @Composable ColumnScope.() -> Unit = {
-        Column(
-            Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 12.dp),
-            verticalArrangement = Arrangement.spacedBy(4.dp)
-        ) {
-            Row(
-                horizontalArrangement = Arrangement.spacedBy(12.dp),
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                // The key this pack powers, in the colours it wears on the
-                // keyboard: the mic for speech, the AI fix glyph for the refiner.
-                // Whether it is installed is said in words below — a tick here
-                // would have cost the one picture that ties a 482 MB download to
-                // the button the user actually presses.
-                SpectrumTile(
-                    icon = if (pack.kind == ModelKind.REFINER_LLM) R.drawable.ic_ai_fix
-                        else R.drawable.sym_keyboard_voice_rounded,
-                    contentDescription = null,
-                )
-                Text(
-                    pack.displayName,
-                    // The pack is the most important object in its card, so it is
-                    // not typographically smaller than the switches it governs.
-                    style = MaterialTheme.typography.titleMedium,
-                    modifier = Modifier.weight(1f)
-                )
-            }
-            Text(
-                text = describe(context, pack, state, queued),
-                style = MaterialTheme.typography.bodyMedium,
-                color = if (state is PackState.Failed) MaterialTheme.colorScheme.error
-                    else MaterialTheme.colorScheme.onSurfaceVariant,
-            )
-            // WaveKey: an installed pack still has to be the one that runs.
-            // Which engine and whether refinement is on both live elsewhere on
-            // this screen, so say here whether this pack is actually in play.
-            if (state is PackState.Installed) inUseLine(context, pack)?.let {
-                Text(
-                    it,
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.primary,
-                )
-            }
-            if (state is PackState.Downloading) {
-                LinearProgressIndicator(
-                    progress = { state.fraction.toFloat() },
-                    modifier = Modifier.fillMaxWidth().padding(vertical = 4.dp),
-                )
-            }
-            message?.let {
-                Text(
-                    it,
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                )
-            }
-            // Stacked and right-aligned: the two-button case (download, import)
-            // reads as a primary action with an escape hatch under it, and one
-            // button lands in the same place as two.
+    // The actions ride beside the title rather than under the card's text: a
+    // pack is a thing with one obvious verb, and the verb belongs where the name
+    // is. Stacked when there are two, so download reads as the action and import
+    // as the escape hatch under it.
+    val actions: @Composable () -> Unit = {
             Column(
-                Modifier.fillMaxWidth(),
                 horizontalAlignment = Alignment.End,
                 verticalArrangement = Arrangement.spacedBy(2.dp),
             ) {
@@ -341,6 +286,65 @@ private fun PackRow(
                         }
                     }
                 }
+            }
+    }
+    val body: @Composable ColumnScope.() -> Unit = {
+        Column(
+            Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 12.dp),
+            verticalArrangement = Arrangement.spacedBy(4.dp)
+        ) {
+            Row(
+                horizontalArrangement = Arrangement.spacedBy(12.dp),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                // The key this pack powers, in the colours it wears on the
+                // keyboard: the mic for speech, the AI fix glyph for the refiner.
+                // Whether it is installed is said in words below — a tick here
+                // would have cost the one picture that ties a 482 MB download to
+                // the button the user actually presses.
+                SpectrumTile(
+                    icon = if (pack.kind == ModelKind.REFINER_LLM) R.drawable.ic_ai_fix
+                        else R.drawable.sym_keyboard_voice_rounded,
+                    contentDescription = null,
+                )
+                Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
+                    Text(
+                        pack.displayName,
+                        // The pack is the most important object in its card, so it is
+                        // not typographically smaller than the switches it governs.
+                        style = MaterialTheme.typography.titleMedium,
+                    )
+                    Text(
+                        text = describe(context, pack, state, queued),
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = if (state is PackState.Failed) MaterialTheme.colorScheme.error
+                            else MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                }
+                actions()
+            }
+            // WaveKey: an installed pack still has to be the one that runs.
+            // Which engine and whether refinement is on both live elsewhere on
+            // this screen, so say here whether this pack is actually in play.
+            if (state is PackState.Installed) inUseLine(context, pack)?.let {
+                Text(
+                    it,
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.primary,
+                )
+            }
+            if (state is PackState.Downloading) {
+                LinearProgressIndicator(
+                    progress = { state.fraction.toFloat() },
+                    modifier = Modifier.fillMaxWidth().padding(vertical = 4.dp),
+                )
+            }
+            message?.let {
+                Text(
+                    it,
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
             }
         }
     }
