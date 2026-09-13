@@ -10,6 +10,7 @@ import android.net.Uri
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.ColumnScope
 import androidx.compose.foundation.layout.Row
@@ -19,10 +20,14 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
+import androidx.compose.material3.DropdownMenu
+import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.FilledTonalButton
+import androidx.compose.material3.IconButton
 import androidx.compose.material3.Icon
 import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.ButtonDefaults
+import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
@@ -38,6 +43,10 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.semantics.ProgressBarRangeInfo
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.progressBarRangeInfo
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.tooling.preview.Preview
@@ -249,44 +258,61 @@ private fun PackRow(
             },
         )
     }
-    // The actions ride beside the title rather than under the card's text: a
-    // pack is a thing with one obvious verb, and the verb belongs where the name
-    // is. Stacked when there are two, so download reads as the action and import
-    // as the escape hatch under it.
-    val actions: @Composable () -> Unit = {
-            Column(
-                horizontalAlignment = Alignment.End,
-                verticalArrangement = Arrangement.spacedBy(2.dp),
-            ) {
-                when {
-                    running || state is PackState.Downloading || state is PackState.Verifying ->
-                        TextButton(onClick = { ModelDownloadService.cancel(context, pack.id) }) {
-                            Text(stringResource(R.string.voice_models_cancel))
-                        }
-                    state is PackState.Installed ->
-                        TextButton(
-                            onClick = { confirmRemove = true },
-                            colors = ButtonDefaults.textButtonColors(
-                                contentColor = MaterialTheme.colorScheme.error
-                            ),
-                        ) { Text(stringResource(R.string.voice_models_remove)) }
-                    else -> {
-                        // downloading is the expected action; importing is the escape hatch
-                        FilledTonalButton(
-                            onClick = { requestDownload(meteredConsent = false) },
-                            shape = MaterialTheme.shapes.large,
-                        ) {
-                            Text(stringResource(
-                                if (state is PackState.Failed) R.string.wk_models_retry
-                                else R.string.voice_models_download
-                            ))
-                        }
-                        TextButton(onClick = { importer.launch(arrayOf("*/*")) }) {
-                            Text(stringResource(R.string.voice_models_import))
-                        }
-                    }
+    // One verb per card, on its own full-width line: a 482 MB download is a
+    // decision, and a decision does not belong in the trailing slot of a list
+    // row where a chevron would go. Everything else — the escape hatch, the
+    // destructive one — lives in the overflow, so the primary slot never turns
+    // into "remove" under a thumb that learned it meant "get".
+    val overflow: @Composable () -> Unit = {
+        var expanded by remember { mutableStateOf(false) }
+        Box {
+            IconButton(onClick = { expanded = true }) {
+                Icon(
+                    painterResource(R.drawable.ic_more_vert),
+                    stringResource(R.string.wk_models_more),
+                )
+            }
+            DropdownMenu(expanded = expanded, onDismissRequest = { expanded = false }) {
+                DropdownMenuItem(
+                    text = { Text(stringResource(R.string.voice_models_import)) },
+                    onClick = { expanded = false; importer.launch(arrayOf("*/*")) },
+                )
+                if (state is PackState.Installed) {
+                    DropdownMenuItem(
+                        text = {
+                            Text(
+                                stringResource(R.string.voice_models_remove),
+                                color = MaterialTheme.colorScheme.error,
+                            )
+                        },
+                        onClick = { expanded = false; confirmRemove = true },
+                    )
                 }
             }
+        }
+    }
+    val primaryAction: @Composable () -> Unit = {
+        when {
+            running || state is PackState.Downloading || state is PackState.Verifying ->
+                OutlinedButton(
+                    onClick = { ModelDownloadService.cancel(context, pack.id) },
+                    modifier = Modifier.fillMaxWidth(),
+                    shape = MaterialTheme.shapes.large,
+                ) { Text(stringResource(R.string.voice_models_cancel)) }
+            // Installed needs no button at all: the state line says so, and the
+            // only thing left to do with it is in the overflow.
+            state is PackState.Installed -> Unit
+            else -> FilledTonalButton(
+                onClick = { requestDownload(meteredConsent = false) },
+                modifier = Modifier.fillMaxWidth(),
+                shape = MaterialTheme.shapes.large,
+            ) {
+                Text(
+                    if (state is PackState.Failed) stringResource(R.string.wk_models_retry)
+                    else stringResource(R.string.wk_models_download_size, ByteSize.format(pack.totalBytes))
+                )
+            }
+        }
     }
     val body: @Composable ColumnScope.() -> Unit = {
         Column(
@@ -299,30 +325,52 @@ private fun PackRow(
             ) {
                 // The key this pack powers, in the colours it wears on the
                 // keyboard: the mic for speech, the AI fix glyph for the refiner.
-                // Whether it is installed is said in words below — a tick here
-                // would have cost the one picture that ties a 482 MB download to
-                // the button the user actually presses.
+                // It is described rather than decorative — the picture is what
+                // ties a 482 MB download to the button the user presses, and a
+                // screen reader gets none of that from the name.
                 SpectrumTile(
                     icon = if (pack.kind == ModelKind.REFINER_LLM) R.drawable.ic_ai_fix
                         else R.drawable.sym_keyboard_voice_rounded,
-                    contentDescription = null,
+                    contentDescription = stringResource(
+                        if (pack.kind == ModelKind.REFINER_LLM) R.string.wk_models_tile_fix
+                        else R.string.wk_models_tile_voice
+                    ),
                 )
-                Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
+                Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(4.dp)) {
                     Text(
                         pack.displayName,
                         // The pack is the most important object in its card, so it is
                         // not typographically smaller than the switches it governs.
                         style = MaterialTheme.typography.titleMedium,
                     )
-                    Text(
-                        text = describe(context, pack, state, queued),
-                        style = MaterialTheme.typography.bodyMedium,
-                        color = if (state is PackState.Failed) MaterialTheme.colorScheme.error
-                            else MaterialTheme.colorScheme.onSurfaceVariant,
-                    )
+                    // Whether a pack gates the feature decides what the user has to
+                    // do next, and a word inside a dim sentence is not where that
+                    // belongs. A badge is read before the sentence is.
+                    Surface(
+                        shape = MaterialTheme.shapes.small,
+                        color = if (pack.required) MaterialTheme.colorScheme.secondaryContainer
+                            else MaterialTheme.colorScheme.surfaceContainerHigh,
+                    ) {
+                        Text(
+                            stringResource(
+                                if (pack.required) R.string.wk_models_required
+                                else R.string.wk_models_optional
+                            ),
+                            style = MaterialTheme.typography.labelSmall,
+                            color = if (pack.required) MaterialTheme.colorScheme.onSecondaryContainer
+                                else MaterialTheme.colorScheme.onSurfaceVariant,
+                            modifier = Modifier.padding(horizontal = 8.dp, vertical = 2.dp),
+                        )
+                    }
                 }
-                actions()
+                overflow()
             }
+            Text(
+                text = describe(context, pack, state, queued),
+                style = MaterialTheme.typography.bodyMedium,
+                color = if (state is PackState.Failed) MaterialTheme.colorScheme.error
+                    else MaterialTheme.colorScheme.onSurfaceVariant,
+            )
             // WaveKey: an installed pack still has to be the one that runs.
             // Which engine and whether refinement is on both live elsewhere on
             // this screen, so say here whether this pack is actually in play.
@@ -334,9 +382,19 @@ private fun PackRow(
                 )
             }
             if (state is PackState.Downloading) {
+                val progressText = describe(context, pack, state, queued)
                 LinearProgressIndicator(
                     progress = { state.fraction.toFloat() },
-                    modifier = Modifier.fillMaxWidth().padding(vertical = 4.dp),
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(vertical = 4.dp)
+                        // A bar is a picture of a number. TalkBack is told the
+                        // number, and told it again as it moves.
+                        .semantics {
+                            contentDescription = progressText
+                            progressBarRangeInfo =
+                                ProgressBarRangeInfo(state.fraction.toFloat(), 0f..1f)
+                        },
                 )
             }
             message?.let {
@@ -346,6 +404,7 @@ private fun PackRow(
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
             }
+            primaryAction()
         }
     }
     if (inOwnGroup) PreferenceGroup(content = body) else PreferenceGroupContent(content = body)
@@ -393,8 +452,9 @@ private fun describe(context: Context, pack: ModelPack, state: PackState, queued
                 InstallError.IO -> R.string.voice_models_failed_io
             },
         )
-        pack.required -> context.getString(R.string.voice_models_needed, size)
-        else -> context.getString(R.string.voice_models_optional, size)
+        // Required and optional are badges above this line now, so all it has
+        // left to say is what the download costs.
+        else -> context.getString(R.string.wk_models_size, size)
     }
 }
 

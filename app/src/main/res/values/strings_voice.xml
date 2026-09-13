@@ -65,6 +65,17 @@
     <string name="voice_models_metered_title">Use mobile data?</string>
     <string name="voice_models_metered_message">You are not on Wi-Fi. This download is %1$s and will use your mobile data. It can also wait until you are on Wi-Fi.</string>
     <string name="voice_models_use_mobile_data">Use mobile data</string>
+    <!-- WaveKey: the pack card's primary action carries its cost. %1$s is a size. -->
+    <string name="wk_models_download_size">Download · %1$s</string>
+    <!-- WaveKey: badges that say whether a pack gates the feature -->
+    <string name="wk_models_required">Required</string>
+    <string name="wk_models_optional">Optional</string>
+    <!-- WaveKey: the size line for a pack that is not installed yet. %1$s is a size. -->
+    <string name="wk_models_size">%1$s download</string>
+    <!-- WaveKey: the pack card's overflow, and what the coloured tiles are -->
+    <string name="wk_models_more">More options</string>
+    <string name="wk_models_tile_voice">The voice key this model powers</string>
+    <string name="wk_models_tile_fix">The AI fix key this model powers</string>
     <string name="voice_models_download">Download</string>
     <string name="voice_models_cancel">Cancel</string>
     <string name="voice_models_remove">Remove</string>
