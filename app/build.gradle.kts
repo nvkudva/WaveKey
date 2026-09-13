@@ -57,18 +57,21 @@ android {
     // works and comes out unsigned, exactly as upstream's does.
     signingConfigs {
         create("wavekey") {
-            // The keystore moved with the name; the old path and the old SVB_*
-            // variables still work, so a machine or a CI secret that has not
-            // caught up yet keeps signing instead of silently producing an
-            // unsigned APK.
+            // The keystore moved with the name; the old path, the old SVB_*
+            // variables and the old placeholder passwords all still work, so a
+            // machine or a CI secret that has not caught up keeps signing
+            // instead of silently producing an unsigned APK. The placeholders
+            // are what the existing key was actually created with — renaming
+            // them here would have locked the key out of its own build, which
+            // is exactly what happened the first time.
             val home = System.getProperty("user.home")
             val store = file("$home/.wavekey/release.jks")
                 .takeIf { it.exists() } ?: file("$home/.supervoiceboard/release.jks")
             if (store.exists()) {
                 storeFile = store
-                storePassword = System.getenv("WAVEKEY_STORE_PASSWORD") ?: System.getenv("SVB_STORE_PASSWORD") ?: "wavekey"
+                storePassword = System.getenv("WAVEKEY_STORE_PASSWORD") ?: System.getenv("SVB_STORE_PASSWORD") ?: "supervoiceboard"
                 keyAlias = System.getenv("WAVEKEY_KEY_ALIAS") ?: "supervoiceboard"
-                keyPassword = System.getenv("WAVEKEY_KEY_PASSWORD") ?: System.getenv("SVB_KEY_PASSWORD") ?: "wavekey"
+                keyPassword = System.getenv("WAVEKEY_KEY_PASSWORD") ?: System.getenv("SVB_KEY_PASSWORD") ?: "supervoiceboard"
             }
         }
     }
