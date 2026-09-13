@@ -43,9 +43,10 @@ jobs:
           java-version: "21"
       - uses: gradle/actions/setup-gradle@v4
 
-      # app/build.gradle.kts:52,54 default both passwords to the literal string
-      # "supervoiceboard" when the env vars are unset. With a real key in place
-      # that is a known-public password, so refuse to reach gradle at all.
+      # Gradle now fails a release build outright when either password is
+      # missing, but "supervoiceboard" — the literal the key was created with,
+      # and public in this repo's history — would still open it. Catch both
+      # here, with a message, rather than at gradle's configuration step.
       - name: Check signing secrets
         if: env.SIGNED == 'true'
         env:
@@ -59,7 +60,7 @@ jobs:
               echo "::error title=Signing::WAVEKEY_KEYSTORE_B64 is set but $name is empty"
               bad=1
             elif [ "$value" = "supervoiceboard" ]; then
-              echo "::error title=Signing::$name is the public default from app/build.gradle.kts; pick a real password"
+              echo "::error title=Signing::$name is the public literal the key was created with; pick a real password"
               bad=1
             fi
           done
