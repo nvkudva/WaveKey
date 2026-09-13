@@ -3,7 +3,7 @@
 # 550 MB refiner, and a second ABI is another full NDK compile of the native code.
 #
 # Two halves. The debug-signed half runs today. The signed half is dormant until
-# SVB_KEYSTORE_B64 / SVB_STORE_PASSWORD / SVB_KEY_PASSWORD exist as repo secrets;
+# WAVEKEY_KEYSTORE_B64 / WAVEKEY_STORE_PASSWORD / WAVEKEY_KEY_PASSWORD exist as repo secrets;
 # see docs/release-process.md for generating the keystore. The branch is taken at
 # the workflow level, not in gradle: the gradle-side `storeFile?.let {}` guard
 # (app/build.gradle.kts:69) makes assembleRelease produce an *unsigned* APK when
@@ -30,7 +30,7 @@ jobs:
     env:
       # Whether this run produces a signed release build or a debug-signed one.
       # Every downstream step branches on this rather than re-testing the secret.
-      SIGNED: ${{ secrets.SVB_KEYSTORE_B64 != '' }}
+      SIGNED: ${{ secrets.WAVEKEY_KEYSTORE_B64 != '' }}
     steps:
       - uses: actions/checkout@v4
         with:
@@ -49,14 +49,14 @@ jobs:
       - name: Check signing secrets
         if: env.SIGNED == 'true'
         env:
-          STORE_PASSWORD: ${{ secrets.SVB_STORE_PASSWORD }}
-          KEY_PASSWORD: ${{ secrets.SVB_KEY_PASSWORD }}
+          STORE_PASSWORD: ${{ secrets.WAVEKEY_STORE_PASSWORD }}
+          KEY_PASSWORD: ${{ secrets.WAVEKEY_KEY_PASSWORD }}
         run: |
           bad=0
-          for pair in "SVB_STORE_PASSWORD:$STORE_PASSWORD" "SVB_KEY_PASSWORD:$KEY_PASSWORD"; do
+          for pair in "WAVEKEY_STORE_PASSWORD:$STORE_PASSWORD" "WAVEKEY_KEY_PASSWORD:$KEY_PASSWORD"; do
             name=${pair%%:*}; value=${pair#*:}
             if [ -z "$value" ]; then
-              echo "::error title=Signing::SVB_KEYSTORE_B64 is set but $name is empty"
+              echo "::error title=Signing::WAVEKEY_KEYSTORE_B64 is set but $name is empty"
               bad=1
             elif [ "$value" = "supervoiceboard" ]; then
               echo "::error title=Signing::$name is the public default from app/build.gradle.kts; pick a real password"
@@ -68,7 +68,7 @@ jobs:
       - name: Decode keystore
         if: env.SIGNED == 'true'
         env:
-          KEYSTORE_B64: ${{ secrets.SVB_KEYSTORE_B64 }}
+          KEYSTORE_B64: ${{ secrets.WAVEKEY_KEYSTORE_B64 }}
         run: |
           # app/build.gradle.kts:50 looks here and nowhere else.
           mkdir -p "$HOME/.supervoiceboard"
@@ -78,8 +78,8 @@ jobs:
       - name: Assemble release
         if: env.SIGNED == 'true'
         env:
-          SVB_STORE_PASSWORD: ${{ secrets.SVB_STORE_PASSWORD }}
-          SVB_KEY_PASSWORD: ${{ secrets.SVB_KEY_PASSWORD }}
+          WAVEKEY_STORE_PASSWORD: ${{ secrets.WAVEKEY_STORE_PASSWORD }}
+          WAVEKEY_KEY_PASSWORD: ${{ secrets.WAVEKEY_KEY_PASSWORD }}
         run: ./gradlew :app:assembleRelease -Pabi=arm64-v8a --no-daemon
 
       - name: Assemble debug

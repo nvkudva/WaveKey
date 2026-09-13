@@ -55,7 +55,7 @@ mismatch by editing gradle from a release change.
 
 ## Signing — the dormant half
 
-The workflow ships working and dormant. With no `SVB_KEYSTORE_B64` secret it runs
+The workflow ships working and dormant. With no `WAVEKEY_KEYSTORE_B64` secret it runs
 `assembleDebug`; with one it runs `assembleRelease`. The branch is a step-level `if`
 on the secret, not a gradle-side fallback — `app/build.gradle.kts:69` guards the
 signing config with `storeFile?.let {}`, which makes a keystore-less
@@ -70,14 +70,14 @@ keytool -genkeypair -v \
   -keystore release.jks -storetype JKS \
   -keyalg RSA -keysize 4096 -validity 10000 \
   -alias supervoiceboard
-base64 -w0 release.jks    # paste into SVB_KEYSTORE_B64
+base64 -w0 release.jks    # paste into WAVEKEY_KEYSTORE_B64
 ```
 
 | Secret | Constraint |
 |---|---|
-| `SVB_KEYSTORE_B64` | base64 of `release.jks`. Setting it is what flips the workflow to `assembleRelease`. |
-| `SVB_STORE_PASSWORD` | Must not be empty, and must not be the literal `supervoiceboard`. |
-| `SVB_KEY_PASSWORD` | Same. |
+| `WAVEKEY_KEYSTORE_B64` | base64 of `release.jks`. Setting it is what flips the workflow to `assembleRelease`. |
+| `WAVEKEY_STORE_PASSWORD` | Must not be empty, and must not be the literal `supervoiceboard`. |
+| `WAVEKEY_KEY_PASSWORD` | Same. |
 
 The key alias must be exactly `supervoiceboard` — `app/build.gradle.kts:53` hardcodes
 it and nothing reads it from a secret.

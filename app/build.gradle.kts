@@ -57,21 +57,24 @@ android {
     // works and comes out unsigned, exactly as upstream's does.
     signingConfigs {
         create("wavekey") {
-            // The keystore moved with the name; the old path, the old SVB_*
-            // variables and the old placeholder passwords all still work, so a
-            // machine or a CI secret that has not caught up keeps signing
-            // instead of silently producing an unsigned APK. The placeholders
-            // are what the existing key was actually created with — renaming
-            // them here would have locked the key out of its own build, which
-            // is exactly what happened the first time.
+            // The keystore moved with the name; the old path still works so a
+            // machine that has not caught up keeps signing. The passwords have
+            // no default: an unsigned APK is uninstallable, so a missing
+            // variable has to stop the build rather than produce one.
             val home = System.getProperty("user.home")
             val store = file("$home/.wavekey/release.jks")
                 .takeIf { it.exists() } ?: file("$home/.supervoiceboard/release.jks")
             if (store.exists()) {
                 storeFile = store
-                storePassword = System.getenv("WAVEKEY_STORE_PASSWORD") ?: System.getenv("SVB_STORE_PASSWORD") ?: "supervoiceboard"
+                val wantsRelease = gradle.startParameter.taskNames.any { it.contains("Release") }
+                for (name in listOf("WAVEKEY_STORE_PASSWORD", "WAVEKEY_KEY_PASSWORD")) {
+                    if (wantsRelease && System.getenv(name).isNullOrEmpty()) {
+                        error("$name is not set, and $store cannot be opened without it")
+                    }
+                }
+                storePassword = System.getenv("WAVEKEY_STORE_PASSWORD")
                 keyAlias = System.getenv("WAVEKEY_KEY_ALIAS") ?: "supervoiceboard"
-                keyPassword = System.getenv("WAVEKEY_KEY_PASSWORD") ?: System.getenv("SVB_KEY_PASSWORD") ?: "supervoiceboard"
+                keyPassword = System.getenv("WAVEKEY_KEY_PASSWORD")
             }
         }
     }

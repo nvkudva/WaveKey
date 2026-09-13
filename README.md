@@ -131,12 +131,14 @@ required pack is installed.
 There is no runtime configuration. Two environment variables affect release builds only,
 and only when a keystore exists at `~/.wavekey/release.jks` (the old
 `~/.supervoiceboard/release.jks` is still read if that one is absent). Without either
-file the release build still succeeds and comes out unsigned.
+file the release build still succeeds and comes out unsigned. With the keystore
+present, a release build fails unless both passwords are exported — an unsigned
+APK is uninstallable, so a missing variable stops the build rather than making one.
 
 | Variable | Required | What it is |
 |---|---|---|
-| `WAVEKEY_STORE_PASSWORD` | No | Keystore password for release signing. `SVB_STORE_PASSWORD` still works |
-| `WAVEKEY_KEY_PASSWORD` | No | Key password for the signing alias. `SVB_KEY_PASSWORD` still works |
+| `WAVEKEY_STORE_PASSWORD` | For release builds | Keystore password for release signing |
+| `WAVEKEY_KEY_PASSWORD` | For release builds | Key password for the signing alias |
 | `WAVEKEY_KEY_ALIAS` | No | Signing alias; defaults to `supervoiceboard`, which is what existing keystores hold |
 
 ---
