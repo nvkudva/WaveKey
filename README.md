@@ -139,7 +139,7 @@ APK is uninstallable, so a missing variable stops the build rather than making o
 |---|---|---|
 | `WAVEKEY_STORE_PASSWORD` | For release builds | Keystore password for release signing |
 | `WAVEKEY_KEY_PASSWORD` | For release builds | Key password for the signing alias |
-| `WAVEKEY_KEY_ALIAS` | No | Signing alias; defaults to `supervoiceboard`, which is what existing keystores hold |
+| `WAVEKEY_KEY_ALIAS` | No | Signing alias; defaults to `wavekey` |
 
 ---
 

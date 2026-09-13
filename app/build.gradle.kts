@@ -73,7 +73,7 @@ android {
                     }
                 }
                 storePassword = System.getenv("WAVEKEY_STORE_PASSWORD")
-                keyAlias = System.getenv("WAVEKEY_KEY_ALIAS") ?: "supervoiceboard"
+                keyAlias = System.getenv("WAVEKEY_KEY_ALIAS") ?: "wavekey"
                 keyPassword = System.getenv("WAVEKEY_KEY_PASSWORD")
             }
         }

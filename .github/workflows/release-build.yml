@@ -72,9 +72,9 @@ jobs:
           KEYSTORE_B64: ${{ secrets.WAVEKEY_KEYSTORE_B64 }}
         run: |
           # app/build.gradle.kts:50 looks here and nowhere else.
-          mkdir -p "$HOME/.supervoiceboard"
-          printf '%s' "$KEYSTORE_B64" | base64 -d > "$HOME/.supervoiceboard/release.jks"
-          test -s "$HOME/.supervoiceboard/release.jks"
+          mkdir -p "$HOME/.wavekey"
+          printf '%s' "$KEYSTORE_B64" | base64 -d > "$HOME/.wavekey/release.jks"
+          test -s "$HOME/.wavekey/release.jks"
 
       - name: Assemble release
         if: env.SIGNED == 'true'
@@ -109,7 +109,7 @@ jobs:
       - name: Upload APK
         uses: actions/upload-artifact@v4
         with:
-          name: supervoiceboard-apk
+          name: wavekey-apk
           path: ${{ steps.asset.outputs.path }}
 
       - name: Upload reports
@@ -134,7 +134,7 @@ jobs:
           ## Read this before installing
 
           - This build is signed with Android's public debug key. Anyone can build an APK that Android will accept as an update to it. Install it to try the keyboard, not to rely on it.
-          - It installs as a separate app id (`com.supervoiceboard.app.debug`). A future signed build **cannot** upgrade over it — you will have to uninstall this one and lose your keyboard settings.
+          - It installs as a separate app id (`com.wavekey.keyboard.debug`). A future signed build **cannot** upgrade over it — you will have to uninstall this one and lose your keyboard settings.
           - This build ships without `main_ro.dict`, the main English dictionary. Word suggestions while typing will be worse than a real build. Dictation is unaffected.
           - The APK is debuggable. Anyone with USB debugging access to your phone can read the keyboard's data.
 

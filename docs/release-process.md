@@ -69,7 +69,7 @@ a release that cannot be automated, and it must not be.
 keytool -genkeypair -v \
   -keystore release.jks -storetype JKS \
   -keyalg RSA -keysize 4096 -validity 10000 \
-  -alias supervoiceboard
+  -alias wavekey -dname "CN=WaveKey, OU=Dev, O=WaveKey, C=US"
 base64 -w0 release.jks    # paste into WAVEKEY_KEYSTORE_B64
 ```
 
@@ -79,13 +79,14 @@ base64 -w0 release.jks    # paste into WAVEKEY_KEYSTORE_B64
 | `WAVEKEY_STORE_PASSWORD` | Must not be empty, and must not be the literal `supervoiceboard`. |
 | `WAVEKEY_KEY_PASSWORD` | Same. |
 
-The key alias must be exactly `supervoiceboard` — `app/build.gradle.kts:53` hardcodes
-it and nothing reads it from a secret.
+The alias defaults to `wavekey`; a keystore that uses another one has to say so in
+`WAVEKEY_KEY_ALIAS`, which is read from the environment, not from a secret.
 
-`app/build.gradle.kts:52,54` default both passwords to the literal string
-`supervoiceboard` when the env vars are unset. Against a real key that is a
-known-public password, so the workflow's "Check signing secrets" step exits non-zero
-before gradle is ever called if either secret is empty or is that literal.
+The passwords have no default. A release build with either variable unset fails at
+gradle's configuration step, naming the variable, rather than producing an unsigned
+APK — and the workflow's "Check signing secrets" step exits before gradle is called
+at all if either secret is empty or is the literal `supervoiceboard`, which the
+first key was created with and which is public in this repo's history.
 
 Keep `release.jks` and its passwords off this machine and out of this repo. Losing
 the key means no build can ever upgrade a build signed with it.
