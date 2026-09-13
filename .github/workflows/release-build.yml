@@ -164,9 +164,9 @@ jobs:
           GH_TOKEN: ${{ github.token }}
         run: |
           set -eu
-          # Computed here rather than in a ${{ }} expression, which titled a
-          # signed v1.0-beta.2 "(test build)" despite every other step on this
-          # run taking the signed branch off the same variable.
+          # Computed in shell rather than as a workflow expression, which
+          # titled a signed v1.0-beta.2 "(test build)" despite every other step
+          # on that run taking the signed branch off the same variable.
           if [ "$SIGNED" = "true" ]; then suffix=""; else suffix=" (test build)"; fi
           gh release create "$GITHUB_REF_NAME" "${{ steps.asset.outputs.path }}" \
             --repo "$GITHUB_REPOSITORY" \
