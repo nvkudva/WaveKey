@@ -162,12 +162,14 @@ jobs:
         if: startsWith(github.ref, 'refs/tags/')
         env:
           GH_TOKEN: ${{ github.token }}
-          # Written this way round because '' is falsy in a GitHub expression,
-          # so the truthy branch has to be the non-empty one.
-          TITLE_SUFFIX: ${{ env.SIGNED == 'true' && '' || ' (test build)' }}
         run: |
+          set -eu
+          # Computed here rather than in a ${{ }} expression, which titled a
+          # signed v1.0-beta.2 "(test build)" despite every other step on this
+          # run taking the signed branch off the same variable.
+          if [ "$SIGNED" = "true" ]; then suffix=""; else suffix=" (test build)"; fi
           gh release create "$GITHUB_REF_NAME" "${{ steps.asset.outputs.path }}" \
             --repo "$GITHUB_REPOSITORY" \
-            --title "WaveKey $GITHUB_REF_NAME$TITLE_SUFFIX" \
+            --title "WaveKey $GITHUB_REF_NAME$suffix" \
             --notes-file body.md \
             --prerelease
