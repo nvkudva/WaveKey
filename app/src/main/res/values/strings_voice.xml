@@ -32,7 +32,10 @@
     <string name="voice_stopped">Voice typing stopped</string>
     <!-- WaveKey: the microphone step in the setup wizard. %s is the application name. -->
     <string name="setup_mic_title">Turn on voice typing</string>
-    <string name="setup_mic_instruction">"%s types what you say, and the speech never leaves your device. Allow the microphone so the voice key is ready when you are."</string>
+    <!-- The privacy claim moved to the next screen, which is where the handling
+         is explained in full. Saying it here too would say it twice and weakly,
+         and the shipped default makes the old sentence false. -->
+    <string name="setup_mic_instruction">"%s types what you say. Allow the microphone so the voice key is ready when you are."</string>
     <string name="setup_mic_action">Allow microphone</string>
     <string name="setup_mic_skip_action">Not now</string>
     <!-- WaveKey: subtitle on the setup wizard welcome screen -->

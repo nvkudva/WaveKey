@@ -58,14 +58,15 @@ import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
 import androidx.core.content.ContextCompat
-import com.vboard.app.models.ModelDownloadService
 import com.vboard.core.model.ByteSize
-import com.vboard.core.model.ModelCatalog
+import com.vboard.core.model.SystemRecognizer
 import helium314.keyboard.latin.R
 import helium314.keyboard.latin.utils.JniUtils
 import helium314.keyboard.latin.utils.Theme
 import helium314.keyboard.latin.utils.UncachedInputMethodManagerUtils
 import helium314.keyboard.latin.utils.previewDark
+import helium314.keyboard.voice.GoogleVoiceSession
+import helium314.keyboard.voice.PrivateModePrefs
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
@@ -187,36 +188,54 @@ fun WelcomeWizard(
                         }
 
                         else -> {
-                            StepCard(
-                                title = stringResource(R.string.setup_step3_title),
-                                instruction = stringResource(R.string.setup_step3_instruction, appName),
-                                icon = painterResource(R.drawable.sym_keyboard_language_switch),
-                                actionText = stringResource(R.string.setup_step3_action),
-                                action = close,
+                            // WaveKey: the last step used to sell a several-hundred
+                            // megabyte download. It no longer asks for one — setup
+                            // enqueues nothing at all. What it owes the user instead is
+                            // the disclosure: with the platform recognizer as the
+                            // default, the audio of what they say leaves the phone on
+                            // some devices, and this is where they read that, as body
+                            // copy they walk through rather than a dialog with an OK.
+                            //
+                            // Both actions are real and neither is decorated as the
+                            // recommended one. Go private opens Voice settings, where
+                            // the size and the states live; it starts no download here,
+                            // because a decision worth a gigabyte belongs next to the
+                            // control that can cancel it.
+                            val size = ByteSize.format(
+                                PrivateModePrefs
+                                    .bundleFor(PrivateModePrefs.dictationLanguage())
+                                    .downloadBytes(emptySet())
                             )
-                            // WaveKey: the model download is offered here rather than
-                            // with the microphone step, because it costs a several-hundred
-                            // megabyte download — which is a question, so it is asked as
-                            // one, with an answer either way. Yes starts the download and
-                            // opens the models screen so it can be watched; no finishes
-                            // setup, and the models screen can be reached later.
-                            OptionalCard(
-                                tiles = listOf(R.drawable.sym_keyboard_voice_rounded, R.drawable.ic_ai_fix),
-                                title = stringResource(R.string.setup_voice_action),
-                                subtitle = stringResource(
-                                    R.string.setup_voice_instruction,
-                                    ByteSize.format(
-                                        ModelCatalog.packs.filter { it.required }.sumOf { it.totalBytes }
-                                    ),
-                                ),
-                                icon = painterResource(R.drawable.ic_settings_voice),
-                            ) {
-                                ModelCatalog.packs.filter { it.required }
-                                    .forEach { ModelDownloadService.start(ctx, it.id) }
-                                SettingsDestination.navigateTo(SettingsDestination.VoiceModels)
+                            val goPrivate = {
+                                SettingsDestination.navigateTo(SettingsDestination.Voice)
                                 close()
                             }
-                            SecondaryAction(stringResource(R.string.setup_voice_skip_action), finish)
+                            val noRecognizer =
+                                GoogleVoiceSession.systemRecognizer(ctx) == SystemRecognizer.NONE
+                            if (noRecognizer) {
+                                // Nothing on this phone can dictate yet, so the download
+                                // is the step rather than an alternative to it.
+                                StepCard(
+                                    title = stringResource(R.string.setup_privacy_title),
+                                    instruction = stringResource(R.string.wk_private_required),
+                                    icon = painterResource(R.drawable.ic_settings_voice),
+                                    actionText = stringResource(R.string.wk_private_required_go, size),
+                                    action = goPrivate,
+                                )
+                                SecondaryAction(stringResource(R.string.setup_voice_skip_action), finish)
+                            } else {
+                                StepCard(
+                                    title = stringResource(R.string.setup_privacy_title),
+                                    instruction = stringResource(R.string.setup_privacy_body, size),
+                                    icon = painterResource(R.drawable.ic_settings_voice),
+                                    actionText = stringResource(R.string.setup_privacy_keep),
+                                    action = finish,
+                                )
+                                SecondaryAction(
+                                    stringResource(R.string.setup_privacy_go, size),
+                                    goPrivate,
+                                )
+                            }
                         }
                     }
                 }
@@ -321,53 +340,6 @@ private fun ColumnScope.StepCard(
         shape = MaterialTheme.shapes.large,
     ) {
         Text(actionText, style = MaterialTheme.typography.labelLarge)
-    }
-}
-
-/** An offer the user can take or walk past, so it reads quieter than the step's own action. */
-@Composable
-private fun OptionalCard(
-    title: String,
-    subtitle: String,
-    icon: Painter,
-    tiles: List<Int> = emptyList(),
-    onClick: () -> Unit,
-) {
-    Card(
-        onClick = onClick,
-        modifier = Modifier.fillMaxWidth(),
-        shape = MaterialTheme.shapes.large,
-        colors = CardDefaults.cardColors(
-            containerColor = MaterialTheme.colorScheme.surfaceContainerLow,
-            contentColor = MaterialTheme.colorScheme.onSurface,
-        ),
-    ) {
-        Row(
-            Modifier.padding(16.dp),
-            horizontalArrangement = Arrangement.spacedBy(12.dp),
-            verticalAlignment = Alignment.CenterVertically
-        ) {
-            // The keys the download switches on, in the colours they wear on the
-            // keyboard — so the thing being paid for has a face before it lands.
-            if (tiles.isEmpty()) {
-                Icon(
-                    icon, null, Modifier.size(24.dp),
-                    tint = MaterialTheme.colorScheme.onSurfaceVariant
-                )
-            } else {
-                Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                    tiles.forEach { SpectrumTile(it, null, size = 30) }
-                }
-            }
-            Column(Modifier.weight(1f)) {
-                Text(title, style = MaterialTheme.typography.titleSmall)
-                Text(
-                    subtitle,
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                )
-            }
-        }
     }
 }
 
