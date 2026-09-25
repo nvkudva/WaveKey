@@ -64,6 +64,7 @@ import com.vboard.core.model.ModelCatalog
 import com.vboard.core.model.ModelPack
 import com.vboard.core.model.PackInstaller
 import com.vboard.core.model.PackState
+import com.vboard.core.model.PrivateMode
 import helium314.keyboard.latin.R
 import com.vboard.app.settings.SettingsRepository.Defaults as VoiceDefaults
 import com.vboard.app.settings.SettingsRepository.Keys as VoiceKeys
@@ -116,18 +117,27 @@ fun VoiceModelsScreen(
 private fun PrivateModeHeader() {
     val ctx = LocalContext.current
     val runtime = remember { voiceRuntimeOrNull(ctx) } ?: return
+    // A preference write is not Compose state, and the engine preference is half of what the
+    // header says — so it is read on the same recomposition signal every other row uses.
+    val changed = (ctx.getActivity() as? SettingsActivity)?.prefChanged?.collectAsState()
+    if ((changed?.value ?: 0) < 0) return
     val bundle = remember { PrivateModePrefs.bundleFor(PrivateModePrefs.dictationLanguage()) }
     val liveStates by ModelDownloadService.states.collectAsState()
-    var installedIds by remember { mutableStateOf<Set<String>>(emptySet()) }
+    var diskStates by remember { mutableStateOf<Map<String, PackState>>(emptyMap()) }
     LaunchedEffect(liveStates) {
-        installedIds = withContext(Dispatchers.IO) {
+        diskStates = withContext(Dispatchers.IO) {
             PrivateModeDownloads.diskStates(runtime.packInstaller, bundle)
-                .filterValues { it == PackState.Installed }
-                .keys
         }
     }
+    val state = PrivateMode.resolve(
+        bundle = bundle,
+        packStates = bundle.packs.associate { pack ->
+            pack.id to (liveStates[pack.id] ?: diskStates[pack.id] ?: PackState.NotInstalled)
+        },
+        googleVoicePreferred = PrivacyBreakingSettings.googleVoiceEnabled(ctx.prefs()),
+    )
     Text(
-        stringResource(privateModeHeader(bundle, installedIds)),
+        stringResource(privateModeHeader(state)),
         style = MaterialTheme.typography.bodyMedium,
         color = MaterialTheme.colorScheme.onSurfaceVariant,
         modifier = Modifier.padding(horizontal = 24.dp).padding(bottom = 8.dp),
@@ -255,7 +265,9 @@ private fun PackRow(
             onConfirmed = {
                 confirmRemove = false
                 scope.launch {
-                    withContext(Dispatchers.IO) { runtime.packInstaller.delete(pack) }
+                    withContext(Dispatchers.IO) {
+                        PrivateModeDownloads.delete(runtime.packInstaller, pack)
+                    }
                     diskState = PackState.NotInstalled
                     message = context.getString(R.string.wk_models_removed, size)
                 }

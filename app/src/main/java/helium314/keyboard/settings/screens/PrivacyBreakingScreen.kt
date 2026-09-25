@@ -25,6 +25,7 @@ import helium314.keyboard.settings.Setting
 import helium314.keyboard.settings.SettingsActivity
 import helium314.keyboard.settings.initPreview
 import helium314.keyboard.settings.preferences.SwitchPreference
+import helium314.keyboard.voice.PrivateModePrefs
 
 object PrivacyBreakingSettings {
     /** Dictation goes to the platform recognizer instead of WaveKey's own models. */
@@ -85,8 +86,14 @@ fun createPrivacyBreakingSettings(context: Context) = listOf(
     Setting(
         context, PrivacyBreakingSettings.PREF_GOOGLE_VOICE,
         R.string.privacy_breaking_google_voice, R.string.privacy_breaking_google_voice_summary,
-    ) {
-        SwitchPreference(it, PrivacyBreakingSettings.DEFAULT_GOOGLE_VOICE)
+    ) { setting ->
+        // Flipping this switch is the user choosing an engine, so it records the choice the
+        // same way every other engine control does. Writing the bare key left the choice
+        // indistinguishable from a default, and the engine sync at the next app start read it
+        // as one and overwrote it.
+        SwitchPreference(setting, PrivacyBreakingSettings.DEFAULT_GOOGLE_VOICE) { google ->
+            PrivateModePrefs.setGoogleVoice(context.prefs(), google = google, manual = true)
+        }
     },
     Setting(
         context, PrivacyBreakingSettings.PREF_GOOGLE_PASSWORD_MANAGER,

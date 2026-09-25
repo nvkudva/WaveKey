@@ -210,8 +210,8 @@ fun WelcomeWizard(
                                 SettingsDestination.navigateTo(SettingsDestination.Voice)
                                 close()
                             }
-                            val noRecognizer =
-                                GoogleVoiceSession.systemRecognizer(ctx) == SystemRecognizer.NONE
+                            val recognizer = GoogleVoiceSession.systemRecognizer(ctx)
+                            val noRecognizer = recognizer == SystemRecognizer.NONE
                             if (noRecognizer) {
                                 // Nothing on this phone can dictate yet, so the download
                                 // is the step rather than an alternative to it.
@@ -224,9 +224,19 @@ fun WelcomeWizard(
                                 )
                                 SecondaryAction(stringResource(R.string.setup_voice_skip_action), finish)
                             } else {
+                                // On a phone that recognizes offline the audio does not go to
+                                // Google, and the disclosure says what is true here rather
+                                // than the sentence that is true on most phones.
                                 StepCard(
                                     title = stringResource(R.string.setup_privacy_title),
-                                    instruction = stringResource(R.string.setup_privacy_body, size),
+                                    instruction = stringResource(
+                                        if (recognizer == SystemRecognizer.ON_DEVICE) {
+                                            R.string.setup_privacy_body_local
+                                        } else {
+                                            R.string.setup_privacy_body
+                                        },
+                                        size,
+                                    ),
                                     icon = painterResource(R.drawable.ic_settings_voice),
                                     actionText = stringResource(R.string.setup_privacy_keep),
                                     action = finish,

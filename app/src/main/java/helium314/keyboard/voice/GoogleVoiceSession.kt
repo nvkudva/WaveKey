@@ -13,7 +13,9 @@ import android.content.Context
 import android.content.Intent
 import android.os.Build
 import android.os.Bundle
+import android.content.pm.ApplicationInfo
 import android.speech.RecognitionListener
+import android.speech.RecognitionService
 import android.speech.RecognizerIntent
 import android.speech.SpeechRecognizer
 import com.vboard.core.model.SystemRecognizer
@@ -198,10 +200,17 @@ class GoogleVoiceSession(
         /**
          * True when the platform can recognize without sending audio anywhere.
          * Static so settings can ask without opening a session.
+         *
+         * `isOnDeviceRecognitionAvailable` answers from a device configuration value and
+         * keeps answering yes when the service that configuration names has been disabled or
+         * uninstalled — which is how a phone with no working recognizer at all was told that
+         * nothing it says is sent to Google, and then failed to bind at the first mic press.
+         * So the framework's answer is kept, and a bindable service is required with it.
          */
         fun onDeviceAvailable(context: Context): Boolean =
             Build.VERSION.SDK_INT >= Build.VERSION_CODES.S &&
-                SpeechRecognizer.isOnDeviceRecognitionAvailable(context)
+                SpeechRecognizer.isOnDeviceRecognitionAvailable(context) &&
+                recognitionServices(context).any { it.preinstalled }
 
         /**
          * WaveKey: which recognizer this device actually has, probed rather than inferred
@@ -209,12 +218,44 @@ class GoogleVoiceSession(
          *
          * The distinction between the two available cases is the whole privacy story — one
          * keeps audio on the phone and the other does not — so it is answered in one place
-         * and handed to `:core` as a fact.
+         * and handed to `:core` as a fact. The third case is real too: a device can have no
+         * recognizer at all, and a claim of privacy resting on a service that cannot be
+         * bound is the same lie as a claim of privacy resting on nothing.
          */
         fun systemRecognizer(context: Context): SystemRecognizer = when {
+            recognitionServices(context).isEmpty() -> SystemRecognizer.NONE
             onDeviceAvailable(context) -> SystemRecognizer.ON_DEVICE
             SpeechRecognizer.isRecognitionAvailable(context) -> SystemRecognizer.NETWORK_ONLY
             else -> SystemRecognizer.NONE
+        }
+
+        /** A `RecognitionService` this device can actually bind to. */
+        private data class Recognizer(val packageName: String, val preinstalled: Boolean)
+
+        /**
+         * The recognition services the package manager will resolve, which is the only
+         * evidence that any of this can run. Disabled and uninstalled components do not
+         * resolve, which is exactly the case the framework's availability flags miss.
+         *
+         * The on-device recognizer is part of the system image on every device that has one,
+         * so [Recognizer.preinstalled] is what separates "this phone recognizes offline" from
+         * "some app I installed can recognize".
+         */
+        private fun recognitionServices(context: Context): List<Recognizer> = runCatching {
+            context.packageManager
+                .queryIntentServices(Intent(RecognitionService.SERVICE_INTERFACE), 0)
+                .mapNotNull { it.serviceInfo?.applicationInfo }
+                .map {
+                    Recognizer(
+                        packageName = it.packageName,
+                        preinstalled = it.flags and ApplicationInfo.FLAG_SYSTEM != 0,
+                    )
+                }
+        }.getOrElse {
+            // A package manager query that throws is not evidence of absence, so the
+            // framework's own answer stands rather than the mode chooser going blank.
+            Log.w(TAG, "could not enumerate recognition services", it)
+            listOf(Recognizer(context.packageName, preinstalled = true))
         }
     }
 }
