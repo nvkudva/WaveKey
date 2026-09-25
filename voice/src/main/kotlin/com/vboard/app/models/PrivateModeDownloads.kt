@@ -59,23 +59,54 @@ object PrivateModeDownloads {
         installedPackIds: Set<String>,
         allowMetered: Boolean,
     ) {
+        // Every pack in the bundle carries the same combined figures, so the notification one
+        // of them raises counts the download the user actually asked for rather than its own
+        // share of it.
+        val progress = ModelDownloadService.BundleProgress(
+            bytesDone = installedBytes(bundle, installedPackIds),
+            bytesTotal = bundle.totalBytes,
+        )
         for (pack in bundle.missingPacks(installedPackIds)) {
-            if (allowMetered) ModelDownloadService.startAllowingMetered(context, pack.id)
-            else ModelDownloadService.start(context, pack.id)
+            if (allowMetered) {
+                ModelDownloadService.startAllowingMetered(context, pack.id, progress)
+            } else {
+                ModelDownloadService.start(context, pack.id, progress)
+            }
         }
     }
 
     /**
      * One cancel stops the whole bundle. Packs that already finished stay finished — the
      * installer's state is on disk and nothing here touches it.
+     *
+     * It also throws away the partial bytes of the packs that did not finish. Nothing resumes
+     * a cancelled download, so keeping them is not a saving: it is several hundred megabytes
+     * the user cannot see in any list and cannot reclaim from any screen.
      */
-    fun cancel(context: Context, bundle: PrivateModeBundle) {
+    suspend fun cancel(
+        context: Context,
+        installer: PackInstaller,
+        bundle: PrivateModeBundle,
+        installedPackIds: Set<String>,
+    ) {
         ModelDownloadService.cancel(context, bundle.packs.map { it.id })
+        bundle.missingPacks(installedPackIds).forEach { installer.discardPartial(it) }
     }
 
     /** Removes exactly the bundle's packs and nothing else. */
     suspend fun delete(installer: PackInstaller, bundle: PrivateModeBundle) {
-        bundle.packs.forEach { installer.delete(it) }
+        bundle.packs.forEach { delete(installer, it) }
+    }
+
+    /**
+     * Removes one pack and tells everyone watching.
+     *
+     * The publish is the point: a removal is a state change, and the screens that show what
+     * is installed learn about state changes from [ModelDownloadService.states].
+     */
+    suspend fun delete(installer: PackInstaller, pack: ModelPack) {
+        installer.delete(pack)
+        ModelDownloadService.publishRemoved(pack.id)
     }
 
     /** Free space on the volume the packs install onto, for the storage pre-check. */

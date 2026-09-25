@@ -45,6 +45,19 @@ object ModelDownloadService {
         _states.value = _states.value + (packId to state)
     }
 
+    /**
+     * Records that a pack is gone, so every screen watching [states] finds out.
+     *
+     * A removal is a state change like any other, and it used to be the only one that never
+     * reached this flow: the caller deleted the files and updated its own row, which left
+     * every other observer — the private mode header above the same list, the control on the
+     * Voice screen — showing the pack as installed until something else happened to re-read
+     * the disk.
+     */
+    fun publishRemoved(packId: String) {
+        publish(packId, PackState.NotInstalled)
+    }
+
     // ------------------------------------------------------------ scheduling
 
     /**
@@ -54,8 +67,8 @@ object ModelDownloadService {
      * behaviour for free: on cellular the request is queued and the system starts it when
      * Wi-Fi appears, rather than spending the user's data allowance.
      */
-    fun start(context: Context, packId: String) {
-        enqueue(context, packId, allowMetered = false)
+    fun start(context: Context, packId: String, bundle: BundleProgress? = null) {
+        enqueue(context, packId, allowMetered = false, bundle = bundle)
     }
 
     /**
@@ -64,13 +77,38 @@ object ModelDownloadService {
      * Only ever called behind a confirmation that states the real size — see
      * [com.vboard.core.model.DownloadPolicy], which decides when that confirmation is owed.
      */
-    fun startAllowingMetered(context: Context, packId: String) {
-        enqueue(context, packId, allowMetered = true)
+    fun startAllowingMetered(context: Context, packId: String, bundle: BundleProgress? = null) {
+        enqueue(context, packId, allowMetered = true, bundle = bundle)
     }
 
-    private fun enqueue(context: Context, packId: String, allowMetered: Boolean) {
+    /**
+     * What one pack's download is a part of, for a caller that offered the user one download.
+     *
+     * The worker knows only its own pack, and the notification it raises is the same download
+     * the screen is showing — so the figures have to come from whoever defined the bundle.
+     * Without this the notification counts one pack while the screen counts two, and the two
+     * percentages disagree by half.
+     *
+     * @property bytesDone bytes the bundle already has, from packs installed before this one
+     *   started.
+     * @property bytesTotal every byte the bundle amounts to, installed or not.
+     */
+    data class BundleProgress(val bytesDone: Long, val bytesTotal: Long)
+
+    private fun enqueue(
+        context: Context,
+        packId: String,
+        allowMetered: Boolean,
+        bundle: BundleProgress?,
+    ) {
         val request = OneTimeWorkRequestBuilder<ModelDownloadWorker>()
-            .setInputData(workDataOf(ModelDownloadWorker.KEY_PACK_ID to packId))
+            .setInputData(
+                workDataOf(
+                    ModelDownloadWorker.KEY_PACK_ID to packId,
+                    ModelDownloadWorker.KEY_BUNDLE_DONE to (bundle?.bytesDone ?: 0L),
+                    ModelDownloadWorker.KEY_BUNDLE_TOTAL to (bundle?.bytesTotal ?: 0L),
+                ),
+            )
             .setConstraints(
                 Constraints.Builder()
                     // The scheduler, not our code, is what actually keeps a download off
@@ -97,13 +135,7 @@ object ModelDownloadService {
     /** Cancels every in-flight or queued model download. */
     fun cancel(context: Context) {
         WorkManager.getInstance(context).cancelAllWorkByTag(TAG_ALL)
-        _states.value = _states.value.mapValues { (_, state) ->
-            if (state is PackState.Downloading || state == PackState.Verifying) {
-                PackState.NotInstalled
-            } else {
-                state
-            }
-        }
+        clearInFlight(_states.value.keys)
     }
 
     fun cancel(context: Context, packId: String) {
@@ -123,14 +155,16 @@ object ModelDownloadService {
         clearInFlight(packIds.toSet())
     }
 
-    /** Drops in-flight state for [packIds]; an installed pack keeps its state. */
+    /**
+     * Drops in-flight state for [packIds]; an installed pack keeps its state.
+     *
+     * A recorded failure counts as in-flight: it is an outcome still waiting for an answer,
+     * and cancelling is that answer. Leaving it behind would keep the control in its Failed
+     * state with a Retry button after the user has said they are done.
+     */
     private fun clearInFlight(packIds: Set<String>) {
         _states.value = _states.value.mapValues { (id, state) ->
-            if (id in packIds && (state is PackState.Downloading || state == PackState.Verifying)) {
-                PackState.NotInstalled
-            } else {
-                state
-            }
+            if (id in packIds && state != PackState.Installed) PackState.NotInstalled else state
         }
     }
 
@@ -138,7 +172,12 @@ object ModelDownloadService {
 
     // ----------------------------------------------------------- observation
 
-    /** A pack the scheduler is holding until its network constraint is met. */
+    /**
+     * A pack the scheduler is holding.
+     *
+     * [waitingForNetwork] means it is held for a link it is allowed to use, which is a
+     * different thing from being held because there is no link at all.
+     */
     data class Scheduled(val packId: String, val waitingForNetwork: Boolean)
 
     /**
@@ -167,9 +206,13 @@ object ModelDownloadService {
                     if (done >= 0 && total > 0 && packId !in _states.value) {
                         publish(packId, PackState.Downloading(done, total))
                     }
+                    // Held and connected means held for an unmetered link; held with no
+                    // connection at all is a different sentence, and saying "waiting for
+                    // Wi-Fi" in airplane mode sends the user to look for a router.
                     Scheduled(
                         packId = packId,
-                        waitingForNetwork = info.state == WorkInfo.State.ENQUEUED,
+                        waitingForNetwork = info.state == WorkInfo.State.ENQUEUED &&
+                            Connectivity.current(context) != NetworkState.OFFLINE,
                     )
                 }
             }

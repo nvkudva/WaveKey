@@ -20,6 +20,9 @@
     <string name="voice_error_generic">Something went wrong with voice typing</string>
     <string name="download_channel_name">Model downloads</string>
     <string name="download_notification_title">Downloading voice models</string>
+    <!-- WaveKey: shown instead of one pack name while the private mode bundle downloads,
+         because the bundle is one download from the user's point of view. -->
+    <string name="download_notification_bundle">Private mode models</string>
     <string name="setup_notify_voice_ready">Voice typing is ready</string>
     <string name="setup_notify_pack_ready">%1$s is ready</string>
     <string name="setup_notify_pack_failed">%1$s couldn\'t be downloaded</string>

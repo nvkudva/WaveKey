@@ -61,11 +61,34 @@ class ModelDownloadWorker(
 
     private var lastUiPublishAt = 0L
 
+    /**
+     * The download this pack is one part of, as the caller defined it.
+     *
+     * The notification and the screen have to be the same story: AC 10 gives them one
+     * percentage point of slack, and a per-pack notification next to a per-bundle screen is
+     * out by half for the whole of the first pack.
+     */
+    private val bundleBytesDone get() = inputData.getLong(KEY_BUNDLE_DONE, 0L)
+    private val bundleBytesTotal get() = inputData.getLong(KEY_BUNDLE_TOTAL, 0L)
+
+    /** Where this pack's progress sits in the whole download the user asked for. */
+    private fun bundleFraction(state: PackState.Downloading): Float =
+        if (bundleBytesTotal <= 0L) state.fraction.toFloat()
+        else ((bundleBytesDone + state.bytesDone).toFloat() / bundleBytesTotal).coerceIn(0f, 1f)
+
+    /** What the notification is about: the bundle if there is one, otherwise this pack. */
+    private fun notificationText(pack: ModelPack): String =
+        if (bundleBytesTotal > 0L) {
+            applicationContext.getString(R.string.download_notification_bundle)
+        } else {
+            pack.displayName
+        }
+
     override suspend fun doWork(): Result = coroutineScope {
         val packId = inputData.getString(KEY_PACK_ID) ?: return@coroutineScope Result.failure()
         val pack = ModelCatalog.byId(packId) ?: return@coroutineScope Result.failure()
 
-        runCatching { setForeground(foregroundInfo(pack.displayName, 0f)) }
+        runCatching { setForeground(foregroundInfo(notificationText(pack), 0f)) }
             .onFailure {
                 // Android 12+ refuses a foreground start from the background. The download
                 // still runs; it just does so without a progress notification rather than
@@ -87,7 +110,7 @@ class ModelDownloadWorker(
                             KEY_BYTES_TOTAL to state.bytesTotal,
                         ),
                     )
-                    setForeground(foregroundInfo(pack.displayName, state.fraction.toFloat()))
+                    setForeground(foregroundInfo(notificationText(pack), bundleFraction(state)))
                 }
             }
         }
@@ -143,7 +166,8 @@ class ModelDownloadWorker(
 
     override suspend fun getForegroundInfo(): ForegroundInfo {
         val name = inputData.getString(KEY_PACK_ID)
-            ?.let { ModelCatalog.byId(it)?.displayName }
+            ?.let { ModelCatalog.byId(it) }
+            ?.let { notificationText(it) }
             ?: applicationContext.getString(R.string.download_notification_title)
         return foregroundInfo(name, 0f)
     }
@@ -259,5 +283,7 @@ class ModelDownloadWorker(
         internal const val KEY_PACK_ID = "pack_id"
         internal const val KEY_BYTES_DONE = "bytes_done"
         internal const val KEY_BYTES_TOTAL = "bytes_total"
+        internal const val KEY_BUNDLE_DONE = "bundle_bytes_done"
+        internal const val KEY_BUNDLE_TOTAL = "bundle_bytes_total"
     }
 }
