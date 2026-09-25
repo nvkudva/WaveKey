@@ -256,7 +256,9 @@ class VoiceController(
     fun toggleAsrEngine() {
         val prefs = ime.prefs()
         val toSystem = !PrivacyBreakingSettings.googleVoiceEnabled(prefs)
-        prefs.edit().putBoolean(PrivacyBreakingSettings.PREF_GOOGLE_VOICE, toSystem).apply()
+        // Marked as the user's own choice, so the automatic switch that follows a
+        // model install does not quietly undo what they just pressed.
+        PrivateModePrefs.setGoogleVoice(prefs, google = toSystem, manual = true)
         val message = ime.getString(
             when {
                 toSystem -> R.string.asr_engine_system
