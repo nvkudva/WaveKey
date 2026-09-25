@@ -160,6 +160,21 @@ sealed interface PrivateModeState {
 
     /** Every bundle pack installed. */
     data object On : PrivateModeState
+
+    /**
+     * Bundle packs are on disk but the platform recognizer is the selected engine, so private
+     * mode is not running.
+     *
+     * This is the state turning private mode off lands in, and it is the reason selection is
+     * part of resolving at all: without it a bundle that is merely present reports On, the
+     * control offers no action, and the user who just turned it off has no way back. It is
+     * also where §5.5.5's promise lives — [missingPacks] empty means coming back is a
+     * preference write with no download, no dialog and no progress.
+     */
+    data class OffWithModels(
+        val installedPacks: List<ModelPack>,
+        val missingPacks: List<ModelPack>,
+    ) : PrivateModeState
 }
 
 /** What the device can actually do, as probed — never inferred from an API level. */
@@ -243,6 +258,9 @@ object PrivateMode {
      * @param scheduledPackIds bundle packs WorkManager has enqueued or running.
      * @param waitingForNetworkPackIds the subset whose network constraint is not met yet.
      * @param usableSpaceBytes free space on the model volume, or null when it is not known.
+     * @param googleVoicePreferred the `PREF_GOOGLE_VOICE` preference as stored. Installed packs
+     *   alone are not private mode: AC 16 reads "installed *and selected*", and a bundle the
+     *   user has switched away from has to keep offering the way back.
      */
     fun resolve(
         bundle: PrivateModeBundle,
@@ -250,6 +268,7 @@ object PrivateMode {
         scheduledPackIds: Set<String> = emptySet(),
         waitingForNetworkPackIds: Set<String> = emptySet(),
         usableSpaceBytes: Long? = null,
+        googleVoicePreferred: Boolean = false,
     ): PrivateModeState {
         bundle.blocker?.let { return PrivateModeState.Unavailable(it) }
         if (bundle.isEmpty) return PrivateModeState.Unavailable(PrivateModeBlocker.LANGUAGE)
@@ -286,7 +305,10 @@ object PrivateMode {
                 waitingForNetwork = scheduled.any { it.id in waitingForNetworkPackIds },
             )
         }
-        if (missing.isEmpty()) return PrivateModeState.On
+        if (missing.isEmpty()) {
+            return if (googleVoicePreferred) PrivateModeState.OffWithModels(installed, missing)
+            else PrivateModeState.On
+        }
 
         // Cancellation is not a failure: it lands in Off or Partly on, which is what the
         // user asked for. Anything else has a cause the user is owed.
@@ -296,7 +318,10 @@ object PrivateMode {
         if (failure != null) {
             return PrivateModeState.Failed(failure.error, installed, missing)
         }
-        if (installed.isNotEmpty()) return PrivateModeState.PartlyOn(installed, missing)
+        if (installed.isNotEmpty()) {
+            return if (googleVoicePreferred) PrivateModeState.OffWithModels(installed, missing)
+            else PrivateModeState.PartlyOn(installed, missing)
+        }
         return PrivateModeState.Off
     }
 

@@ -393,6 +393,18 @@ class PackInstaller(
     }
 
     /**
+     * Discards staged and partial bytes, leaving an installed payload untouched.
+     *
+     * This is what cancelling a download has to do with the half-fetched archive. Keeping it
+     * would be defensible if anything ever offered to resume it, but nothing does once the
+     * work is cancelled, so the bytes are simply unreachable storage the user cannot see and
+     * cannot reclaim — several hundred megabytes of it for one pack.
+     */
+    suspend fun discardPartial(pack: ModelPack) {
+        lockFor(pack).withLock { deleteRecursively(stagingDir(pack)) }
+    }
+
+    /**
      * Drops the pack's installed marker so [stateOf] reports [PackState.NotInstalled]
      * and the UI offers a re-download.
      *

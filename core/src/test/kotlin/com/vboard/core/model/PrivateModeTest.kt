@@ -120,6 +120,62 @@ class PrivateModeTest {
         )
     }
 
+    // AC 16: installed is not the same as selected, and the one place that used to conflate
+    // them reported On for a mode the user had just turned off — with no action left on the
+    // row, so no way back.
+
+    @Test
+    fun `a bundle the user has switched away from is not On`() {
+        val state = PrivateMode.resolve(
+            bundle(),
+            installed(speech, refiner),
+            googleVoicePreferred = true,
+        )
+        assertEquals(PrivateModeState.OffWithModels(listOf(speech, refiner), emptyList()), state)
+    }
+
+    @Test
+    fun `turning it off keeps every pack, so coming back costs nothing`() {
+        val state = PrivateMode.resolve(
+            bundle(),
+            installed(speech, refiner),
+            googleVoicePreferred = true,
+        )
+        assertIs<PrivateModeState.OffWithModels>(state)
+        assertTrue(state.missingPacks.isEmpty(), "nothing is left to download")
+        assertEquals(bundle().packs, state.installedPacks)
+    }
+
+    @Test
+    fun `half a bundle with the platform recognizer selected is off, not partly on`() {
+        val state = PrivateMode.resolve(
+            bundle(),
+            installed(speech),
+            googleVoicePreferred = true,
+        )
+        assertEquals(PrivateModeState.OffWithModels(listOf(speech), listOf(refiner)), state)
+    }
+
+    @Test
+    fun `the same packs with the local engine selected are On`() {
+        assertEquals(
+            PrivateModeState.On,
+            PrivateMode.resolve(
+                bundle(),
+                installed(speech, refiner),
+                googleVoicePreferred = false,
+            ),
+        )
+    }
+
+    @Test
+    fun `the engine preference does not invent a state out of an empty disk`() {
+        assertEquals(
+            PrivateModeState.Off,
+            PrivateMode.resolve(bundle(), emptyMap(), googleVoicePreferred = true),
+        )
+    }
+
     @Test
     fun `a cancelled pack lands in Off rather than Failed`() {
         assertEquals(
