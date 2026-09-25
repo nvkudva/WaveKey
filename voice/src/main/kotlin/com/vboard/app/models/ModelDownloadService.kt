@@ -108,6 +108,30 @@ object ModelDownloadService {
 
     fun cancel(context: Context, packId: String) {
         WorkManager.getInstance(context).cancelUniqueWork(UNIQUE_PREFIX + packId)
+        clearInFlight(setOf(packId))
+    }
+
+    /**
+     * Cancels a set of packs as one act, for a caller that offered the user a single
+     * download. Cancelling them one at a time is the same work, but it leaves the live state
+     * of the packs the user did not think about still reading Downloading until the next disk
+     * read, and the combined progress bar is built from exactly that state.
+     */
+    fun cancel(context: Context, packIds: Collection<String>) {
+        val manager = WorkManager.getInstance(context)
+        packIds.forEach { manager.cancelUniqueWork(UNIQUE_PREFIX + it) }
+        clearInFlight(packIds.toSet())
+    }
+
+    /** Drops in-flight state for [packIds]; an installed pack keeps its state. */
+    private fun clearInFlight(packIds: Set<String>) {
+        _states.value = _states.value.mapValues { (id, state) ->
+            if (id in packIds && (state is PackState.Downloading || state == PackState.Verifying)) {
+                PackState.NotInstalled
+            } else {
+                state
+            }
+        }
     }
 
     private fun tagFor(packId: String) = "$TAG_ALL:$packId"
