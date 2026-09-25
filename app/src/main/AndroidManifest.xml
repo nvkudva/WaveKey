@@ -93,6 +93,30 @@ SPDX-License-Identifier: Apache-2.0 AND GPL-3.0-only
             android:process=":ui"
             tools:node="merge" />
 
+        <!-- WaveKey: the components the system itself starts on WorkManager's
+             behalf have to live in the same process the workers do. Pinning only
+             the foreground service left the rest in the keyboard process, so
+             after the system killed a download mid-transfer the job that came
+             back woke the wrong process: WorkManager's default process name says
+             `:ui`, so the greedy scheduler there declines the work as a secondary
+             process, ForceStopRunnable never runs its reschedule, and the
+             download stops for good while the screen keeps showing the
+             percentage it stopped at. These are the entry points that matter —
+             the JobScheduler service, the force-stop receiver and the
+             boot-reschedule receiver. -->
+        <service
+            android:name="androidx.work.impl.background.systemjob.SystemJobService"
+            android:process=":ui"
+            tools:node="merge" />
+        <receiver
+            android:name="androidx.work.impl.utils.ForceStopRunnable$BroadcastReceiver"
+            android:process=":ui"
+            tools:node="merge" />
+        <receiver
+            android:name="androidx.work.impl.background.systemalarm.RescheduleReceiver"
+            android:process=":ui"
+            tools:node="merge" />
+
         <!-- Services -->
         <service android:name="LatinIME"
                 android:label="@string/english_ime_name"

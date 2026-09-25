@@ -62,6 +62,13 @@ class ManifestProcessSplitTest {
         // service is the component that has to be pinned.
         val networked = listOf(
             "androidx.work.impl.foreground.SystemForegroundService",
+            // The system starts these three on WorkManager's behalf, and a worker runs in
+            // whichever process they were started in. Left in the keyboard process, a
+            // download the system killed comes back in a process WorkManager's own default
+            // process name tells it not to work in, so it never resumes at all.
+            "androidx.work.impl.background.systemjob.SystemJobService",
+            "androidx.work.impl.utils.ForceStopRunnable\$BroadcastReceiver",
+            "androidx.work.impl.background.systemalarm.RescheduleReceiver",
         )
         for (name in networked) {
             assertTrue(
