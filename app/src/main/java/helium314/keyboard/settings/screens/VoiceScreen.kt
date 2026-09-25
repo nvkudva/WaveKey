@@ -42,14 +42,18 @@ import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.tooling.preview.Preview
 import com.vboard.app.settings.SettingsRepository.Defaults as VoiceDefaults
 import com.vboard.app.settings.SettingsRepository.Keys as VoiceKeys
+import com.vboard.app.llm.DeviceAiProbe
 import com.vboard.app.llm.refinerAbiSupported
 import com.vboard.app.voice.voiceRuntimeOrNull
 import com.vboard.core.model.ByteSize
+import com.vboard.core.model.DeviceAi
+import com.vboard.core.model.SystemRecognizer
 import com.vboard.core.model.ModelCatalog
 import com.vboard.core.model.ModelKind
 import com.vboard.core.session.SilenceTimeout
 import helium314.keyboard.latin.R
 import helium314.keyboard.voice.GoogleVoiceSession
+import helium314.keyboard.voice.PrivateModePrefs
 import helium314.keyboard.voice.VoiceStripView
 import helium314.keyboard.latin.utils.Log
 import helium314.keyboard.latin.utils.NextScreenIcon
@@ -82,6 +86,10 @@ fun VoiceScreen(
     // Raw mode is the verbatim escape hatch: with it on, none of the cleanup
     // switches below do anything, so they are hidden rather than left lying.
     val raw = prefs.getBoolean(VoiceKeys.RAW_TRANSCRIPT, VoiceDefaults.RAW_TRANSCRIPT)
+    // Gemini Nano's absence affects text cleanup only, so it is said here rather
+    // than as an asterisk on the mode rows: the deterministic pass still runs,
+    // and WaveKey's own model is what adds the rest.
+    val nanoAbsent = DeviceAiProbe.capability(LocalContext.current) != DeviceAi.AVAILABLE
     // Grouped by what each setting acts on: the speech-to-text half, then the
     // clean-up half, then the two rows that belong to neither.
     val speech = listOfNotNull(
@@ -120,30 +128,29 @@ fun VoiceScreen(
             Column(
                 Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(bottom = 24.dp)
             ) {
-                // What turns speech into text: the model that does it, the engine
-                // choice between it and Google's, and how dictation behaves.
-                PreferenceCategory(stringResource(R.string.wk_cat_voice_to_text))
-                // The model, the engine that uses it and how dictation behaves are
-                // one subject, so they share one container. Two groups stacked flush
-                // met at a shared edge and their radii read as a pinch rather than as
-                // two cards — and the second card carried no heading of its own, so
-                // there was nothing to say whether it still belonged to this one.
+                // Where dictation and text cleanup run, as one decision, above
+                // everything it governs. The per-pack rows are not here: they are
+                // maintenance and they live on the Voice models screen, which this
+                // block's overflow reaches. The screen holds the decision; that
+                // screen holds the parts.
+                PreferenceCategory(stringResource(R.string.wk_cat_processing))
                 PreferenceGroup {
-                    VoiceModelsSection(only = ModelKind.FINAL_ASR, inOwnGroup = false)
-                    PreferenceGroupDivider()
-                    EngineChoice()
+                    PrivateModeSection()
                     PreferenceGroupDivider()
                     SettingsSections(speech, inOwnGroup = false)
                 }
 
-                // What happens to the text afterwards, under the model that does it.
-                // The model and the switch that uses it. The cleanup below is
+                // What happens to the text afterwards. The cleanup below is
                 // deterministic and runs with no model at all, so it does not
                 // belong under a heading that implies a download gates it.
                 PreferenceCategory(stringResource(R.string.wk_engine_title))
                 PreferenceGroup {
-                    VoiceModelsSection(only = ModelKind.REFINER_LLM, inOwnGroup = false)
-                    PreferenceGroupDivider()
+                    if (nanoAbsent) Text(
+                        stringResource(R.string.wk_nano_absent),
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp),
+                    )
                     SettingsSections(correction, inOwnGroup = false)
                 }
 
@@ -164,55 +171,25 @@ fun VoiceScreen(
 }
 
 /**
- * WaveKey: which recognizer runs, as one choice rather than as a switch.
+ * One row of the mode chooser.
  *
- * The two engines are one boolean apart, so exclusivity is structural: turning
- * one on cannot leave the other on, and there is no state where neither runs.
+ * A disabled row keeps its text. `alpha(0.5f)` alone drops it below contrast minimums, so the
+ * reason it is unavailable lives in the description, which TalkBack reads regardless of alpha.
  */
 @Composable
-private fun EngineChoice() {
-    val ctx = LocalContext.current
-    val prefs = ctx.prefs()
-    val google = PrivacyBreakingSettings.googleVoiceEnabled(prefs)
-    val runtime = voiceRuntimeOrNull(ctx)
-    val ready = runtime?.modelStore?.dictationReady(runtime.packInstaller) == true
-    Column(Modifier.selectableGroup()) {
-        EngineOption(
-            name = stringResource(R.string.privacy_breaking_google_voice),
-            // The system recognizer runs locally when the platform has an offline
-            // pack and goes to Google when it does not, so the row says which.
-            description = stringResource(
-                if (GoogleVoiceSession.onDeviceAvailable(ctx)) R.string.wk_engine_google_local
-                else R.string.wk_engine_google_network
-            ),
-            selected = google,
-        ) { prefs.edit { putBoolean(PrivacyBreakingSettings.PREF_GOOGLE_VOICE, true) } }
-        EngineOption(
-            name = stringResource(R.string.wk_engine_ondevice),
-            description = stringResource(
-                if (ready) R.string.wk_engine_ondevice_ready else R.string.wk_engine_ondevice_missing
-            ),
-            selected = !google,
-            // Selecting an engine whose model is not installed picks a keyboard
-            // that cannot dictate; the row says why rather than going quiet.
-            enabled = ready,
-        ) { prefs.edit { putBoolean(PrivacyBreakingSettings.PREF_GOOGLE_VOICE, false) } }
-    }
-}
-
-@Composable
-private fun EngineOption(
+internal fun EngineOption(
     name: String,
     description: String,
     selected: Boolean,
     enabled: Boolean = true,
+    trailing: (@Composable () -> Unit)? = null,
     onClick: () -> Unit,
 ) {
     Row(
         Modifier.fillMaxWidth()
             .selectable(selected, enabled = enabled, role = Role.RadioButton, onClick = onClick)
             .alpha(if (enabled) 1f else 0.5f)
-            .padding(horizontal = 16.dp, vertical = 10.dp),
+            .padding(start = 16.dp, end = if (trailing == null) 16.dp else 0.dp, top = 10.dp, bottom = 10.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
         RadioButton(selected = selected, enabled = enabled, onClick = null)
@@ -224,6 +201,7 @@ private fun EngineOption(
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
         }
+        trailing?.invoke()
     }
 }
 
@@ -235,11 +213,22 @@ fun createVoiceSettings(context: Context) = listOf(
         val ctx = LocalContext.current
         val runtime = voiceRuntimeOrNull(ctx)
         val ready = runtime?.modelStore?.dictationReady(runtime.packInstaller) == true
-        val needed = ByteSize.format(ModelCatalog.packs.filter { it.required }.sumOf { it.totalBytes })
+        // The size is the private mode bundle's, so this row and the control above
+        // it can never quote different numbers. It is no longer a precondition:
+        // nothing here presents a download as the price of using the keyboard.
+        val needed = ByteSize.format(
+            PrivateModePrefs.bundleFor(PrivateModePrefs.dictationLanguage()).downloadBytes(emptySet())
+        )
         Card(
             onClick = { SettingsDestination.navigateTo(SettingsDestination.VoiceModels) },
             colors = CardDefaults.cardColors(
-                containerColor = if (ready) MaterialTheme.colorScheme.surfaceContainerHighest
+                // The urgent tint is only for a phone where dictation genuinely
+                // cannot run. With the platform recognizer as the default, a fresh
+                // install is not broken, and the card must not perform urgency for
+                // a download the user does not need.
+                containerColor =
+                    if (ready || GoogleVoiceSession.systemRecognizer(ctx) != SystemRecognizer.NONE)
+                        MaterialTheme.colorScheme.surfaceContainerHighest
                     else MaterialTheme.colorScheme.primaryContainer,
             ),
             modifier = Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 6.dp),

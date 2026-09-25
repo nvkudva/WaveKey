@@ -1,0 +1,537 @@
+// SPDX-License-Identifier: GPL-3.0-only
+//
+// WaveKey. New file: the private mode control — one decision, one combined
+// size, one progress story, one cancel, one end state.
+package helium314.keyboard.settings.screens
+
+import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.selection.selectableGroup
+import androidx.compose.material3.DropdownMenu
+import androidx.compose.material3.DropdownMenuItem
+import androidx.compose.material3.FilledTonalButton
+import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
+import androidx.compose.material3.LinearProgressIndicator
+import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.OutlinedButton
+import androidx.compose.material3.Text
+import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.collectAsState
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.setValue
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.res.painterResource
+import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.semantics.ProgressBarRangeInfo
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.progressBarRangeInfo
+import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.unit.dp
+import com.vboard.app.models.ModelDownloadService
+import com.vboard.app.models.PrivateModeDownloads
+import com.vboard.app.voice.voiceRuntimeOrNull
+import com.vboard.core.model.ByteSize
+import com.vboard.core.model.DictationBackend
+import com.vboard.core.model.DownloadDecision
+import com.vboard.core.model.DownloadPolicy
+import com.vboard.core.model.InstallError
+import com.vboard.core.model.PackState
+import com.vboard.core.model.PrivateMode
+import com.vboard.core.model.PrivateModeBlocker
+import com.vboard.core.model.PrivateModeBundle
+import com.vboard.core.model.PrivateModeState
+import com.vboard.core.model.RefinementBackend
+import com.vboard.core.model.SystemRecognizer
+import helium314.keyboard.latin.R
+import helium314.keyboard.latin.utils.getActivity
+import helium314.keyboard.latin.utils.prefs
+import helium314.keyboard.settings.SettingsActivity
+import helium314.keyboard.settings.SettingsDestination
+import helium314.keyboard.settings.dialogs.ConfirmationDialog
+import helium314.keyboard.settings.preferences.PreferenceGroupDivider
+import helium314.keyboard.voice.GoogleVoiceSession
+import helium314.keyboard.voice.PrivateModePrefs
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
+
+/**
+ * The mode chooser, the honest disclosure, and one action.
+ *
+ * The two rows are a radio group rather than a switch because the off state is a specific
+ * thing — Google — that the user needs to hear named, and because the on transition costs
+ * several hundred megabytes and a switch promises instant.
+ *
+ * The radio never lies: selecting Private while the models are missing does not move the
+ * selection. It starts the download, and the selection moves when the recognizer lands,
+ * because the selected row always names the engine that would run right now. The engine is a
+ * consequence of what is installed, which is why this replaced the old separate engine radio
+ * pair rather than sitting next to it — two controls that can contradict each other was the
+ * bug.
+ */
+@Composable
+fun PrivateModeSection() {
+    val ctx = LocalContext.current
+    val runtime = remember { voiceRuntimeOrNull(ctx) }
+    // Preference writes are not Compose state. Without this the rows keep their old text
+    // after the engine changes, which is what makes a live setting look broken.
+    val changed = (ctx.getActivity() as? SettingsActivity)?.prefChanged?.collectAsState()
+    if ((changed?.value ?: 0) < 0) return
+    if (runtime == null) {
+        Text(
+            stringResource(R.string.voice_models_unavailable),
+            style = MaterialTheme.typography.bodyMedium,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+            modifier = Modifier.padding(16.dp),
+        )
+        return
+    }
+    val prefs = ctx.prefs()
+    val scope = rememberCoroutineScope()
+    val language = remember { PrivateModePrefs.dictationLanguage() }
+    val bundle = remember(language) { PrivateModePrefs.bundleFor(language) }
+    val recognizer = remember { GoogleVoiceSession.systemRecognizer(ctx) }
+    val capabilities = remember { PrivateModeDownloads.capabilities(ctx, recognizer) }
+
+    val scheduled by ModelDownloadService.observeScheduledWork(ctx)
+        .collectAsState(initial = emptyList())
+    val liveStates by ModelDownloadService.states.collectAsState()
+    var diskStates by remember { mutableStateOf<Map<String, PackState>>(emptyMap()) }
+    var usableSpace by remember { mutableStateOf<Long?>(null) }
+    LaunchedEffect(bundle, liveStates, scheduled) {
+        diskStates = withContext(Dispatchers.IO) {
+            PrivateModeDownloads.diskStates(runtime.packInstaller, bundle)
+        }
+        usableSpace = withContext(Dispatchers.IO) {
+            PrivateModeDownloads.usableSpaceBytes(runtime.modelStore)
+        }
+    }
+
+    val scheduledIds = scheduled.map { it.packId }.toSet()
+    val waitingIds = scheduled.filter { it.waitingForNetwork }.map { it.packId }.toSet()
+    // Disk wins once nothing is scheduled: a worker's last published state is what it *did*,
+    // and a pack installed where this process cannot read it must not keep reading Installed.
+    val packStates = bundle.packs.associate { pack ->
+        val disk = diskStates[pack.id] ?: PackState.NotInstalled
+        pack.id to if (pack.id in scheduledIds) liveStates[pack.id] ?: disk else disk
+    }
+    val state = PrivateMode.resolve(bundle, packStates, scheduledIds, waitingIds, usableSpace)
+    val installedIds = bundle.packs
+        .filter { packStates[it.id] == PackState.Installed }
+        .mapTo(mutableSetOf()) { it.id }
+    val google = PrivacyBreakingSettings.googleVoiceEnabled(prefs)
+    val backends = PrivateMode.backends(
+        capabilities = capabilities,
+        googleVoicePreferred = google,
+        localSpeechInstalled = bundle.hasLocalSpeech(installedIds),
+        localRefinerInstalled = bundle.hasLocalRefiner(installedIds),
+    )
+
+    // §5.4: the engine is not a second decision. The moment the recognizer pack is installed,
+    // dictation switches to it, unless the user asked for Google explicitly.
+    LaunchedEffect(installedIds) {
+        if (bundle.hasLocalSpeech(installedIds)) {
+            withContext(Dispatchers.IO) {
+                PrivateModePrefs.syncEngineToInstalledPacks(ctx, language)
+            }
+        }
+    }
+
+    var confirmGoPrivate by remember { mutableStateOf(false) }
+    var confirmMetered by remember { mutableStateOf(false) }
+    var confirmCancel by remember { mutableStateOf(false) }
+    var confirmTurnOff by remember { mutableStateOf(false) }
+    var confirmRemove by remember { mutableStateOf(false) }
+
+    val missingBytes = bundle.downloadBytes(installedIds)
+    val missingText = ByteSize.format(missingBytes)
+    val storageText = ByteSize.format(bundle.storageBytes(installedIds))
+    val installedText = ByteSize.format(PrivateModeDownloads.installedBytes(bundle, installedIds))
+
+    /** Never starts a download on cellular without asking; DownloadPolicy owns that rule. */
+    fun requestDownload(meteredConsent: Boolean) {
+        when (DownloadPolicy.decide(
+            network = ModelDownloadService.networkState(ctx),
+            meteredConsent = meteredConsent,
+            bytes = missingBytes,
+        )) {
+            is DownloadDecision.ConfirmMetered -> confirmMetered = true
+            is DownloadDecision.Enqueue -> PrivateModeDownloads.start(
+                context = ctx,
+                bundle = bundle,
+                installedPackIds = installedIds,
+                allowMetered = meteredConsent,
+            )
+        }
+    }
+
+    fun goPrivate() {
+        if (bundle.isComplete(installedIds)) {
+            // Coming back with both packs present is instant: no download, no dialog. That is
+            // the proof the choice is cheap, so it must not be dressed up as an event.
+            PrivateModePrefs.setGoogleVoice(prefs, google = false, manual = false)
+        } else {
+            confirmGoPrivate = true
+        }
+    }
+
+    Column(Modifier.selectableGroup()) {
+        EngineOption(
+            name = stringResource(R.string.wk_mode_google),
+            description = stringResource(
+                when {
+                    recognizer == SystemRecognizer.NONE -> R.string.wk_mode_google_unavailable
+                    !google -> R.string.wk_mode_google_off
+                    recognizer == SystemRecognizer.ON_DEVICE -> R.string.wk_mode_google_local
+                    else -> R.string.wk_mode_google_network
+                },
+            ),
+            selected = google,
+            enabled = recognizer != SystemRecognizer.NONE,
+            trailing = {
+                PrivateModeOverflow(
+                    canRemove = installedIds.isNotEmpty(),
+                    canUseGoogle = recognizer != SystemRecognizer.NONE &&
+                        bundle.hasLocalSpeech(installedIds),
+                    onRemove = { confirmRemove = true },
+                    onUseGoogle = {
+                        PrivateModePrefs.setGoogleVoice(prefs, google = true, manual = true)
+                    },
+                )
+            },
+        ) {
+            if (bundle.hasLocalSpeech(installedIds)) confirmTurnOff = true
+            else PrivateModePrefs.setGoogleVoice(prefs, google = true, manual = true)
+        }
+        EngineOption(
+            name = stringResource(R.string.wk_mode_private),
+            description = privateRowDescription(state, missingText, installedText, storageText),
+            selected = !google && bundle.hasLocalSpeech(installedIds),
+            enabled = state !is PrivateModeState.Unavailable,
+            onClick = ::goPrivate,
+        )
+        PreferenceGroupDivider()
+        Text(
+            disclosure(state, recognizer, google),
+            style = MaterialTheme.typography.bodySmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+            modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp),
+        )
+        // §6.1: what is running right now, naming the real backend — including the automatic
+        // fallback — rather than restating which preference is set.
+        Column(Modifier.padding(horizontal = 16.dp)) {
+            Text(
+                stringResource(
+                    when (backends.dictation) {
+                        DictationBackend.WAVEKEY -> R.string.wk_now_dictation_wavekey
+                        DictationBackend.SYSTEM_ON_DEVICE -> R.string.wk_now_dictation_system_local
+                        DictationBackend.SYSTEM_NETWORK -> R.string.wk_now_dictation_system_network
+                        DictationBackend.NONE -> R.string.wk_now_dictation_none
+                    },
+                ),
+                style = MaterialTheme.typography.bodySmall,
+            )
+            Text(
+                stringResource(
+                    when (backends.refinement) {
+                        RefinementBackend.WAVEKEY -> R.string.wk_now_refine_wavekey
+                        RefinementBackend.DEVICE_AI -> R.string.wk_now_refine_device_ai
+                        RefinementBackend.DETERMINISTIC -> R.string.wk_now_refine_deterministic
+                    },
+                ),
+                style = MaterialTheme.typography.bodySmall,
+            )
+        }
+        PrivateModeProgress(state)
+        PrivateModeAction(
+            state = state,
+            missingText = missingText,
+            required = recognizer == SystemRecognizer.NONE,
+            onGoPrivate = ::goPrivate,
+            onCancel = { confirmCancel = true },
+        )
+    }
+
+    if (confirmGoPrivate) ConfirmationDialog(
+        onDismissRequest = { confirmGoPrivate = false },
+        onConfirmed = { confirmGoPrivate = false; requestDownload(meteredConsent = false) },
+        confirmButtonText = stringResource(R.string.wk_private_confirm_download),
+        title = { Text(stringResource(R.string.wk_private_confirm_title)) },
+        content = {
+            Text(stringResource(R.string.wk_private_confirm_message, missingText, storageText))
+        },
+    )
+    // The mobile-data question is part of the same decision, so it is asked once, in one
+    // dialog, rather than as a second one that arrives after the user already said yes.
+    if (confirmMetered) ConfirmationDialog(
+        onDismissRequest = { confirmMetered = false },
+        onConfirmed = { confirmMetered = false; requestDownload(meteredConsent = true) },
+        confirmButtonText = stringResource(R.string.wk_private_confirm_metered_download),
+        title = { Text(stringResource(R.string.wk_private_confirm_title)) },
+        content = {
+            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                Text(stringResource(R.string.wk_private_confirm_message, missingText, storageText))
+                Text(stringResource(R.string.wk_private_confirm_metered))
+            }
+        },
+    )
+    if (confirmCancel) ConfirmationDialog(
+        onDismissRequest = { confirmCancel = false },
+        onConfirmed = {
+            confirmCancel = false
+            PrivateModeDownloads.cancel(ctx, bundle)
+        },
+        confirmButtonText = stringResource(R.string.wk_private_cancel_confirm),
+        cancelButtonText = stringResource(R.string.wk_private_cancel_keep),
+        title = { Text(stringResource(R.string.wk_private_cancel_title)) },
+        content = {
+            Text(
+                if (installedIds.isEmpty()) stringResource(R.string.wk_private_cancel_message_none)
+                else stringResource(R.string.wk_private_cancel_message, installedText),
+            )
+        },
+    )
+    // Reverting is free and deletes nothing by default: disk is recoverable, the download is
+    // not. Deleting is offered here as its own answer, never as a consequence of turning off.
+    if (confirmTurnOff) ConfirmationDialog(
+        onDismissRequest = { confirmTurnOff = false },
+        onConfirmed = {
+            confirmTurnOff = false
+            PrivateModePrefs.setGoogleVoice(prefs, google = true, manual = true)
+        },
+        confirmButtonText = stringResource(R.string.wk_private_turn_off_keep),
+        neutralButtonText = stringResource(R.string.wk_private_turn_off_delete, installedText),
+        onNeutral = {
+            confirmTurnOff = false
+            PrivateModePrefs.setGoogleVoice(prefs, google = true, manual = true)
+            scope.launch {
+                PrivateModeDownloads.delete(runtime.packInstaller, bundle)
+                diskStates = withContext(Dispatchers.IO) {
+                    PrivateModeDownloads.diskStates(runtime.packInstaller, bundle)
+                }
+            }
+        },
+        title = { Text(stringResource(R.string.wk_private_turn_off_title)) },
+        content = { Text(stringResource(R.string.wk_private_turn_off_message)) },
+    )
+    if (confirmRemove) ConfirmationDialog(
+        onDismissRequest = { confirmRemove = false },
+        onConfirmed = {
+            confirmRemove = false
+            PrivateModePrefs.setGoogleVoice(prefs, google = true, manual = true)
+            scope.launch {
+                PrivateModeDownloads.delete(runtime.packInstaller, bundle)
+                diskStates = withContext(Dispatchers.IO) {
+                    PrivateModeDownloads.diskStates(runtime.packInstaller, bundle)
+                }
+            }
+        },
+        confirmButtonText = stringResource(R.string.wk_private_remove),
+        title = { Text(stringResource(R.string.wk_private_remove)) },
+        content = { Text(stringResource(R.string.wk_private_remove_message, installedText)) },
+    )
+}
+
+/** One bar for the whole bundle, or none. A stalled bar reads as broken. */
+@Composable
+private fun PrivateModeProgress(state: PrivateModeState) {
+    when (state) {
+        is PrivateModeState.Downloading -> {
+            val fraction = state.fraction.toFloat()
+            val label = stringResource(
+                R.string.wk_private_downloading,
+                (state.fraction * 100).toInt(),
+                ByteSize.format(state.bytesTotal),
+            )
+            Column(Modifier.padding(horizontal = 16.dp, vertical = 8.dp)) {
+                Text(label, style = MaterialTheme.typography.bodyMedium)
+                LinearProgressIndicator(
+                    progress = { fraction },
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(vertical = 4.dp)
+                        // One bar carries one number, said once. Per-pack bars would hand
+                        // TalkBack two progress values for one download.
+                        .semantics {
+                            contentDescription = label
+                            progressBarRangeInfo = ProgressBarRangeInfo(fraction, 0f..1f)
+                        },
+                )
+                Text(
+                    stringResource(R.string.wk_private_downloading_stage),
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+            }
+        }
+        is PrivateModeState.Installing -> PrivateModeNote(R.string.wk_private_installing)
+        is PrivateModeState.Queued -> PrivateModeNote(
+            if (state.waitingForNetwork) R.string.wk_private_queued
+            else R.string.wk_private_queued_offline,
+        )
+        is PrivateModeState.Failed -> Text(
+            failureText(state),
+            style = MaterialTheme.typography.bodyMedium,
+            // Colour is never the state: the reason line carries the error colour and the
+            // container does not, because an error-tinted card reads as a crash.
+            color = MaterialTheme.colorScheme.error,
+            modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp),
+        )
+        else -> Unit
+    }
+}
+
+@Composable
+private fun PrivateModeNote(text: Int) {
+    Text(
+        stringResource(text),
+        style = MaterialTheme.typography.bodyMedium,
+        modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp),
+    )
+}
+
+@Composable
+private fun failureText(state: PrivateModeState.Failed): String {
+    val outcome = stringResource(
+        if (state.installedPacks.isEmpty()) R.string.wk_private_failed_none
+        else R.string.wk_private_partial_speech,
+    )
+    val reason = when (state.error) {
+        InstallError.NETWORK -> stringResource(R.string.wk_private_failed_reason_network)
+        InstallError.CHECKSUM_MISMATCH ->
+            stringResource(R.string.wk_private_failed_reason_checksum)
+        InstallError.INSUFFICIENT_STORAGE -> stringResource(
+            R.string.wk_private_failed_reason_storage,
+            ByteSize.format(state.missingPacks.sumOf { it.installFootprintBytes }),
+        )
+        InstallError.IO -> stringResource(R.string.wk_private_failed_reason_io)
+        InstallError.CANCELLED -> ""
+    }
+    return "$outcome $reason".trim()
+}
+
+/** One verb, on its own full-width line. A decision worth a gigabyte is not a chevron. */
+@Composable
+private fun PrivateModeAction(
+    state: PrivateModeState,
+    missingText: String,
+    required: Boolean,
+    onGoPrivate: () -> Unit,
+    onCancel: () -> Unit,
+) {
+    val modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 8.dp)
+    when (state) {
+        is PrivateModeState.Downloading, PrivateModeState.Installing, is PrivateModeState.Queued ->
+            OutlinedButton(onCancel, modifier, shape = MaterialTheme.shapes.large) {
+                Text(stringResource(R.string.wk_private_cancel))
+            }
+        // On and Unavailable have nothing left to press: the state line says so, and what is
+        // left to do with an installed bundle lives in the overflow.
+        PrivateModeState.On, is PrivateModeState.Unavailable -> Unit
+        is PrivateModeState.Failed -> FilledTonalButton(
+            onGoPrivate, modifier, shape = MaterialTheme.shapes.large,
+        ) { Text(stringResource(R.string.wk_private_retry, missingText)) }
+        is PrivateModeState.PartlyOn -> FilledTonalButton(
+            onGoPrivate, modifier, shape = MaterialTheme.shapes.large,
+        ) { Text(stringResource(R.string.wk_private_partial_retry, missingText)) }
+        PrivateModeState.Off -> FilledTonalButton(
+            onGoPrivate, modifier, shape = MaterialTheme.shapes.large,
+        ) {
+            Text(
+                if (required) stringResource(R.string.wk_private_required_go, missingText)
+                else stringResource(R.string.wk_private_go, missingText),
+            )
+        }
+    }
+}
+
+@Composable
+private fun PrivateModeOverflow(
+    canRemove: Boolean,
+    canUseGoogle: Boolean,
+    onRemove: () -> Unit,
+    onUseGoogle: () -> Unit,
+) {
+    var expanded by remember { mutableStateOf(false) }
+    Box {
+        IconButton(onClick = { expanded = true }) {
+            Icon(
+                painterResource(R.drawable.ic_more_vert),
+                stringResource(R.string.wk_private_more),
+            )
+        }
+        DropdownMenu(expanded = expanded, onDismissRequest = { expanded = false }) {
+            DropdownMenuItem(
+                text = { Text(stringResource(R.string.wk_private_manage)) },
+                onClick = {
+                    expanded = false
+                    SettingsDestination.navigateTo(SettingsDestination.VoiceModels)
+                },
+            )
+            // The only place PREF_GOOGLE_VOICE is directly editable from this screen while
+            // WaveKey's models stay installed.
+            if (canUseGoogle) DropdownMenuItem(
+                text = { Text(stringResource(R.string.wk_private_use_google)) },
+                onClick = { expanded = false; onUseGoogle() },
+            )
+            if (canRemove) DropdownMenuItem(
+                text = {
+                    Text(
+                        stringResource(R.string.wk_private_remove),
+                        color = MaterialTheme.colorScheme.error,
+                    )
+                },
+                onClick = { expanded = false; onRemove() },
+            )
+        }
+    }
+}
+
+@Composable
+private fun privateRowDescription(
+    state: PrivateModeState,
+    missingText: String,
+    installedText: String,
+    storageText: String,
+): String = when (state) {
+    is PrivateModeState.Unavailable -> when (state.reason) {
+        PrivateModeBlocker.LANGUAGE -> stringResource(R.string.wk_mode_private_unavailable_language)
+        PrivateModeBlocker.ABI -> stringResource(R.string.wk_mode_private_unavailable_abi)
+        PrivateModeBlocker.STORAGE ->
+            stringResource(R.string.wk_mode_private_unavailable_storage, storageText)
+    }
+    PrivateModeState.On ->
+        stringResource(R.string.wk_mode_private_on) + " " +
+            stringResource(R.string.wk_private_installed, installedText)
+    is PrivateModeState.PartlyOn -> stringResource(R.string.wk_mode_private_speech_only)
+    else -> stringResource(R.string.wk_mode_private_missing, missingText)
+}
+
+@Composable
+private fun disclosure(
+    state: PrivateModeState,
+    recognizer: SystemRecognizer,
+    google: Boolean,
+): String = when {
+    recognizer == SystemRecognizer.NONE && state !is PrivateModeState.On ->
+        stringResource(R.string.wk_private_required)
+    !google -> stringResource(R.string.wk_disclosure_private)
+    recognizer == SystemRecognizer.ON_DEVICE -> stringResource(R.string.wk_disclosure_google_local)
+    else -> stringResource(R.string.wk_disclosure_google)
+}
+
+/** The header that keeps the Voice models screen and this control from disagreeing. */
+fun privateModeHeader(bundle: PrivateModeBundle, installedPackIds: Set<String>): Int = when {
+    bundle.isComplete(installedPackIds) -> R.string.wk_private_header_on
+    bundle.installedPacks(installedPackIds).isNotEmpty() -> R.string.wk_private_header_partly
+    else -> R.string.wk_private_header_off
+}

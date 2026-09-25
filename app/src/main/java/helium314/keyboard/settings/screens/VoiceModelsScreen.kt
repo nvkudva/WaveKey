@@ -53,6 +53,7 @@ import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
 import helium314.keyboard.settings.SpectrumTile
 import com.vboard.app.models.ModelDownloadService
+import com.vboard.app.models.PrivateModeDownloads
 import com.vboard.app.voice.VoiceRuntime
 import com.vboard.app.voice.voiceRuntimeOrNull
 import com.vboard.core.model.ByteSize
@@ -68,6 +69,7 @@ import com.vboard.app.settings.SettingsRepository.Defaults as VoiceDefaults
 import com.vboard.app.settings.SettingsRepository.Keys as VoiceKeys
 import com.vboard.core.model.ModelKind
 import helium314.keyboard.latin.utils.prefs
+import helium314.keyboard.voice.PrivateModePrefs
 import helium314.keyboard.latin.utils.Theme
 import helium314.keyboard.latin.utils.previewDark
 import helium314.keyboard.latin.utils.getActivity
@@ -99,9 +101,37 @@ fun VoiceModelsScreen(
         settings = emptyList(),
     ) {
         Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(top = 8.dp)) {
+            // WaveKey: this screen is the detail view behind the private mode
+            // control, so it opens by saying which state these packs add up to.
+            // Without it the two surfaces can disagree, and a user who removes a
+            // pack here has no way to know what they just turned off.
+            PrivateModeHeader()
             VoiceModelsSection()
         }
     }
+}
+
+/** Which private mode state the packs on this screen add up to. */
+@Composable
+private fun PrivateModeHeader() {
+    val ctx = LocalContext.current
+    val runtime = remember { voiceRuntimeOrNull(ctx) } ?: return
+    val bundle = remember { PrivateModePrefs.bundleFor(PrivateModePrefs.dictationLanguage()) }
+    val liveStates by ModelDownloadService.states.collectAsState()
+    var installedIds by remember { mutableStateOf<Set<String>>(emptySet()) }
+    LaunchedEffect(liveStates) {
+        installedIds = withContext(Dispatchers.IO) {
+            PrivateModeDownloads.diskStates(runtime.packInstaller, bundle)
+                .filterValues { it == PackState.Installed }
+                .keys
+        }
+    }
+    Text(
+        stringResource(privateModeHeader(bundle, installedIds)),
+        style = MaterialTheme.typography.bodyMedium,
+        color = MaterialTheme.colorScheme.onSurfaceVariant,
+        modifier = Modifier.padding(horizontal = 24.dp).padding(bottom = 8.dp),
+    )
 }
 
 /**
