@@ -10,7 +10,7 @@
     <string name="privacy_breaking_category_voice">Voice</string>
     <string name="privacy_breaking_category_fill">Passwords</string>
     <string name="privacy_breaking_google_voice">Google voice typing</string>
-    <string name="privacy_breaking_google_voice_summary">Dictate with Google\'s recognizer instead of the on-device models. Your audio is sent to Google.</string>
+    <string name="privacy_breaking_google_voice_summary">On by default. Sends dictation audio to Google instead of using the models on this phone. Turn it off in Voice settings by going private.</string>
     <string name="privacy_breaking_password_manager">Google Password Manager fill</string>
     <string name="privacy_breaking_password_manager_summary">Show saved logins from Google Password Manager on username and password fields. The keyboard tells Google which field you are filling.</string>
 </resources>

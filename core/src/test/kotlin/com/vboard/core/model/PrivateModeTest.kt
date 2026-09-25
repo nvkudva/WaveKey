@@ -262,6 +262,12 @@ class PrivateModeTest {
     // ------------------------------------------------------------------ migration
 
     @Test
+    fun `a read before the migration has decided answers with the old behaviour`() {
+        assertFalse(googleVoiceDefault(shippedDefault = true, defaultDecided = false))
+        assertTrue(googleVoiceDefault(shippedDefault = true, defaultDecided = true))
+    }
+
+    @Test
     fun `a fresh install adopts the shipped default`() {
         assertEquals(
             GoogleVoiceMigration.NOTHING,

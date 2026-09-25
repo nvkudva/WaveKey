@@ -8,6 +8,7 @@ package helium314.keyboard.settings.screens
 import android.content.Context
 import android.content.SharedPreferences
 import androidx.compose.material3.Surface
+import com.vboard.core.model.googleVoiceDefault
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
 import androidx.compose.ui.platform.LocalContext
@@ -26,16 +27,55 @@ import helium314.keyboard.settings.initPreview
 import helium314.keyboard.settings.preferences.SwitchPreference
 
 object PrivacyBreakingSettings {
-    /** Dictation goes to Google's recognizer instead of the on-device models. */
+    /** Dictation goes to the platform recognizer instead of WaveKey's own models. */
     const val PREF_GOOGLE_VOICE = "pref_google_voice_typing"
-    const val DEFAULT_GOOGLE_VOICE = false
+
+    /**
+     * The shipped default: the platform recognizer, so a fresh install dictates on the first
+     * mic press with nothing downloaded.
+     *
+     * It only applies once [PREF_DEFAULT_MIGRATED] says the one-time migration has looked at
+     * this install — see [googleVoiceEnabled]. An existing install that already owns WaveKey's
+     * models must not start sending audio to a network recognizer because a default changed,
+     * and a read that happens before the migration has run would do exactly that.
+     */
+    const val DEFAULT_GOOGLE_VOICE = true
+
+    /** Written once the one-time default migration has decided about this install. */
+    const val PREF_DEFAULT_MIGRATED = "pref_google_voice_default_migrated"
+
+    /**
+     * Set when the user picked the recognizer themselves, in the private mode detail. It stops
+     * the automatic switch that follows an install from overruling them.
+     */
+    const val PREF_GOOGLE_VOICE_MANUAL = "pref_google_voice_manual"
+
+    /** The user has been told that audio goes to the device's speech service, and continued. */
+    const val PREF_NETWORK_VOICE_CONSENT = "pref_network_voice_consent"
+
+    /** Set the first time a dictation session starts, as evidence the install is in use. */
+    const val PREF_VOICE_SESSION_SEEN = "pref_voice_session_seen"
 
     /** Offer Google Password Manager (inline autofill) fills on login fields. */
     const val PREF_GOOGLE_PASSWORD_MANAGER = "pref_google_password_manager"
     const val DEFAULT_GOOGLE_PASSWORD_MANAGER = false
 
+    /**
+     * Whether the platform recognizer is the one that runs.
+     *
+     * The fallback is not the constant: before the migration has run, an install with no
+     * stored answer is read as the old behaviour. That closes the window between process
+     * start and the migration finishing, in which a mic press would otherwise adopt the new
+     * default on an install that was never allowed to.
+     */
     fun googleVoiceEnabled(prefs: SharedPreferences) =
-        prefs.getBoolean(PREF_GOOGLE_VOICE, DEFAULT_GOOGLE_VOICE)
+        prefs.getBoolean(
+            PREF_GOOGLE_VOICE,
+            googleVoiceDefault(DEFAULT_GOOGLE_VOICE, defaultDecided(prefs)),
+        )
+
+    /** True once the one-time migration has looked at this install. */
+    fun defaultDecided(prefs: SharedPreferences) = prefs.getBoolean(PREF_DEFAULT_MIGRATED, false)
 
     fun passwordManagerEnabled(prefs: SharedPreferences) =
         prefs.getBoolean(PREF_GOOGLE_PASSWORD_MANAGER, DEFAULT_GOOGLE_PASSWORD_MANAGER)

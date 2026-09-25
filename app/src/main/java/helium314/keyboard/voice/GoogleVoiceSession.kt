@@ -16,6 +16,7 @@ import android.os.Bundle
 import android.speech.RecognitionListener
 import android.speech.RecognizerIntent
 import android.speech.SpeechRecognizer
+import com.vboard.core.model.SystemRecognizer
 import helium314.keyboard.latin.R
 import helium314.keyboard.latin.utils.Log
 
@@ -201,5 +202,19 @@ class GoogleVoiceSession(
         fun onDeviceAvailable(context: Context): Boolean =
             Build.VERSION.SDK_INT >= Build.VERSION_CODES.S &&
                 SpeechRecognizer.isOnDeviceRecognitionAvailable(context)
+
+        /**
+         * WaveKey: which recognizer this device actually has, probed rather than inferred
+         * from an API level.
+         *
+         * The distinction between the two available cases is the whole privacy story — one
+         * keeps audio on the phone and the other does not — so it is answered in one place
+         * and handed to `:core` as a fact.
+         */
+        fun systemRecognizer(context: Context): SystemRecognizer = when {
+            onDeviceAvailable(context) -> SystemRecognizer.ON_DEVICE
+            SpeechRecognizer.isRecognitionAvailable(context) -> SystemRecognizer.NETWORK_ONLY
+            else -> SystemRecognizer.NONE
+        }
     }
 }

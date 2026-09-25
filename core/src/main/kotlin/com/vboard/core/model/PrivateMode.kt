@@ -350,6 +350,18 @@ object PrivateMode {
 }
 
 /**
+ * The dictation default a preference read should fall back to.
+ *
+ * [defaultDecided] is false until the one-time migration has looked at this install, and until
+ * then the answer is the old behaviour whatever the shipped default is. That closes the window
+ * between process start and the migration finishing: without it, a mic press in that window
+ * would adopt the new default on an install that was never allowed to have it, which is the
+ * one failure this whole migration exists to prevent.
+ */
+fun googleVoiceDefault(shippedDefault: Boolean, defaultDecided: Boolean): Boolean =
+    shippedDefault && defaultDecided
+
+/**
  * What an install's existing state says about whether it may adopt the new default.
  *
  * @property choiceRecorded the `PREF_GOOGLE_VOICE` key is already present, i.e. the user (or

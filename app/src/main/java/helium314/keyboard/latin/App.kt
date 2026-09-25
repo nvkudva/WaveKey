@@ -18,6 +18,7 @@ import helium314.keyboard.latin.utils.Log
 import helium314.keyboard.latin.utils.SubtypeSettings
 import helium314.keyboard.latin.utils.prefs
 import helium314.keyboard.latin.utils.upgradeToolbarPrefs
+import helium314.keyboard.voice.PrivateModePrefs
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
@@ -65,6 +66,16 @@ class App : Application(), VoiceRuntimeHost, RefinerModelHost, Configuration.Pro
 
         val scope = CoroutineScope(Dispatchers.Default)
         scope.launch { // do some uncritical work in background for faster startup
+            // WaveKey: whether this install may adopt the shipped dictation
+            // default is decided before anything else here, because until it is,
+            // every read of the preference answers with the old behaviour (see
+            // PrivacyBreakingSettings.googleVoiceEnabled). An install that
+            // already owns the models then switches onto them.
+            PrivateModePrefs.migrateDefaultOnce(this@App)
+            PrivateModePrefs.syncEngineToInstalledPacks(
+                this@App,
+                PrivateModePrefs.dictationLanguage(),
+            )
             SupportedEmojis.load(this@App)
             LayoutUtilsCustom.removeMissingLayouts(this@App)
             val packageInfo = packageManager.getPackageInfo(packageName, 0)
