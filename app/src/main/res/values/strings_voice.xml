@@ -32,11 +32,17 @@
     <string name="voice_stopped">Voice typing stopped</string>
     <!-- WaveKey: the microphone step in the setup wizard. %s is the application name. -->
     <string name="setup_mic_title">Turn on voice typing</string>
-    <string name="setup_mic_instruction">"%s types what you say, and the speech never leaves your device. Allow the microphone so the voice key is ready when you are."</string>
+    <!-- The privacy claim moved to the next screen, which is where the handling
+         is explained in full. Saying it here too would say it twice and weakly,
+         and the shipped default makes the old sentence false. -->
+    <string name="setup_mic_instruction">"%s types what you say. Allow the microphone so the voice key is ready when you are."</string>
     <string name="setup_mic_action">Allow microphone</string>
     <string name="setup_mic_skip_action">Not now</string>
-    <!-- WaveKey: subtitle on the setup wizard welcome screen -->
-    <string name="setup_welcome_voice_description">with on-device Voice Typing</string>
+    <!-- WaveKey: subtitle on the setup wizard welcome screen. It no longer promises
+         on-device voice typing: with the platform recognizer as the shipped default, where
+         dictation runs is a device fact the next screens state, not a claim the first one
+         makes. -->
+    <string name="setup_welcome_voice_description">with voice typing and AI text cleanup</string>
     <!-- WaveKey: the optional voice step in the setup wizard. %1$s is a download size. -->
     <string name="setup_voice_action">Download the AI model now</string>
     <string name="setup_voice_instruction">About %1$s. Voice typing needs it, and AI fix does its best work with it — without it some features are limited. It runs entirely on this phone.</string>
@@ -132,5 +138,7 @@
     <string name="wk_models_removed">Removed · frees %1$s</string>
     <string name="wk_models_remove_message">Remove this model? It frees %1$s, and you will have to download it again to use it.</string>
     <string name="wk_models_remove_required">Remove this model? Dictation stops working on this phone until you download it again. It frees %1$s.</string>
+    <string name="wk_models_remove_required_local">Remove this model? Dictation goes back to your phone\'s own recognizer, which handles it offline. It frees %1$s, and you can download the model again later.</string>
+    <string name="wk_models_remove_required_google">Remove this model? Dictation goes back to Google, and your voice will be sent there again. It frees %1$s, and you can download the model again later.</string>
     <string name="wk_models_retry">Retry</string>
 </resources>

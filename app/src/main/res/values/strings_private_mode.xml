@@ -1,0 +1,136 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+    WaveKey: private mode — one decision that moves dictation and text cleanup
+    onto WaveKey's own models.
+
+    The copy states both trades at the same size: the platform recognizer works
+    now and costs nothing but sends audio where its own voice input sends it,
+    and private mode sends nothing but costs a download. Neither is decorated as
+    the safe or the smart one.
+
+    Every size is a formatted sum from ModelCatalog, never written out here, so a
+    catalog change cannot leave a string lying.
+-->
+<resources>
+    <!-- The mode chooser -->
+    <string name="wk_cat_processing">How dictation works</string>
+    <string name="wk_mode_google">Google</string>
+    <string name="wk_mode_google_network">Your voice is sent to Google to be turned into text. Works now, nothing to download.</string>
+    <string name="wk_mode_google_local">Handled by your phone\'s own recognizer. Nothing is sent to Google. Works now, nothing to download.</string>
+    <string name="wk_mode_google_unavailable">This phone has no speech recognizer of its own, so this is not available here.</string>
+    <string name="wk_mode_google_off">Not in use.</string>
+    <string name="wk_mode_private">Private — everything on this phone</string>
+    <string name="wk_mode_private_missing">Nothing is sent anywhere. Needs a %1$s download and about that much storage.</string>
+    <string name="wk_mode_private_on">Nothing leaves this phone. Speech and text cleanup both run here.</string>
+    <string name="wk_mode_private_speech_only">Speech runs on this phone. Text cleanup uses the built-in rules, which need no download.</string>
+    <string name="wk_mode_private_refiner_only">Text cleanup runs on this phone. Speech still needs a %1$s download.</string>
+    <string name="wk_mode_private_ready">The models are on this phone and nothing needs downloading. Switching back is instant.</string>
+    <string name="wk_mode_private_ready_partial">The speech model is on this phone. Finishing private mode needs a %1$s download.</string>
+    <string name="wk_mode_private_unavailable_language">There is no on-device speech model for the language you are typing in.</string>
+    <string name="wk_mode_private_unavailable_abi">This phone\'s processor cannot run the models WaveKey would download.</string>
+    <string name="wk_mode_private_unavailable_storage">This phone does not have room for the models. %1$s is needed.</string>
+
+    <!-- The one action -->
+    <string name="wk_private_go">Go private · %1$s</string>
+    <string name="wk_private_installed">Installed · %1$s of storage</string>
+    <string name="wk_private_add_refiner">Add AI text cleanup · %1$s</string>
+    <string name="wk_private_required">Dictation on this phone needs WaveKey\'s own models.</string>
+    <string name="wk_private_required_go">Download · %1$s</string>
+    <!-- Coming back with the models already present costs nothing, so the action does not
+         quote a size it is not going to spend. -->
+    <string name="wk_private_go_ready">Go private</string>
+
+    <!-- Overflow -->
+    <string name="wk_private_more">More private mode options</string>
+    <string name="wk_private_manage">Manage models one by one</string>
+    <string name="wk_private_use_google">Use Google\'s recognizer instead</string>
+    <string name="wk_private_remove">Remove the private mode models</string>
+    <string name="wk_private_remove_message">Frees %1$s. Dictation goes back to Google, and your voice will be sent there again. You can download the models again later.</string>
+    <string name="wk_private_remove_message_local">Frees %1$s. Dictation goes back to your phone\'s own recognizer, which handles it offline. You can download the models again later.</string>
+
+    <!-- The download, as one block -->
+    <string name="wk_private_confirm_title">Go private?</string>
+    <string name="wk_private_confirm_message">A %1$s download, and about %2$s of storage while it installs. It runs on Wi-Fi unless you allow mobile data. When it finishes, speech and text cleanup both run on this phone and nothing is sent anywhere.</string>
+    <string name="wk_private_confirm_metered">You are on mobile data right now. Allow this download to use it?</string>
+    <string name="wk_private_confirm_download">Download</string>
+    <string name="wk_private_confirm_metered_download">Use mobile data</string>
+    <string name="wk_private_downloading">Downloading · %1$d%% of %2$s</string>
+    <string name="wk_private_downloading_stage">Speech model, then text cleanup.</string>
+    <string name="wk_private_queued">Waiting for Wi-Fi.</string>
+    <string name="wk_private_queued_offline">Waiting for a connection.</string>
+    <string name="wk_private_verifying">Checking the download…</string>
+    <string name="wk_private_installing">Installing…</string>
+
+    <!-- Cancel -->
+    <string name="wk_private_cancel">Cancel download</string>
+    <string name="wk_private_cancel_title">Stop downloading?</string>
+    <string name="wk_private_cancel_message">%1$s is already downloaded and will be kept. The rest is discarded. Dictation stays with Google.</string>
+    <string name="wk_private_cancel_message_none">Nothing is installed yet, so nothing is kept. Dictation stays with Google.</string>
+    <string name="wk_private_cancel_confirm">Stop</string>
+    <string name="wk_private_cancel_keep">Keep downloading</string>
+
+    <!-- Partial outcomes -->
+    <string name="wk_private_partial_speech">Private mode is on. The text cleanup model did not finish downloading, so cleanup is using the built-in rules for now.</string>
+    <string name="wk_private_partial_retry">Finish the download · %1$s</string>
+    <string name="wk_private_partial_dismiss">Leave it</string>
+    <string name="wk_private_failed_none">Nothing was installed. Dictation is still using Google.</string>
+    <string name="wk_private_failed_speech">The speech model did not download, so dictation is still using Google. The text cleanup model installed and is in use.</string>
+    <string name="wk_private_failed_reason_network">The connection dropped.</string>
+    <string name="wk_private_failed_reason_storage">This phone needs %1$s free and does not have it.</string>
+    <string name="wk_private_failed_reason_checksum">The downloaded file did not match what we expected, so it was discarded.</string>
+    <string name="wk_private_failed_reason_io">The models could not be written to storage.</string>
+    <string name="wk_private_retry">Try again · %1$s</string>
+
+    <!-- Turning it off -->
+    <string name="wk_private_turn_off_title">Leave private mode?</string>
+    <string name="wk_private_turn_off_message">Dictation goes back to Google, and your voice will be sent there again. The models stay on this phone, so coming back is instant.</string>
+    <!-- On a phone with an offline recognizer pack the audio still does not leave, so the
+         dialog must not claim it does. Overclaiming a privacy consequence teaches the user to
+         stop reading these. -->
+    <string name="wk_private_turn_off_message_local">Dictation goes back to your phone\'s own recognizer, which handles it offline. The models stay on this phone, so coming back is instant.</string>
+    <string name="wk_private_turn_off_keep">Keep models</string>
+    <string name="wk_private_turn_off_delete">Delete and free %1$s</string>
+
+    <!-- The disclosure. Permanent, not dismissible: it is a label on a control. -->
+    <string name="wk_disclosure_google">While Google is selected, the audio of what you say is sent to Google\'s speech service to be turned into text, the same service your phone\'s other voice input uses. What you type is not sent. Text cleanup runs on this phone either way.</string>
+    <string name="wk_disclosure_google_local">Your phone has an offline recognizer pack, so this audio is handled on the device and is not sent to Google. If that pack is removed, audio will be sent instead.</string>
+    <string name="wk_disclosure_private">Nothing you say or type is sent anywhere. WaveKey only uses the network to download these models, and only when you ask it to.</string>
+
+    <!-- The one-time sheet on a first mic press that would send audio -->
+    <string name="wk_consent_network_title">Where your voice goes</string>
+    <string name="wk_consent_continue">Continue</string>
+    <string name="wk_consent_go_private">Go private</string>
+
+    <!-- What runs right now, under the chooser -->
+    <string name="wk_now_dictation_wavekey">Dictation: WaveKey\'s model, on this phone.</string>
+    <string name="wk_now_dictation_system_local">Dictation: your phone\'s own recognizer, offline.</string>
+    <string name="wk_now_dictation_system_network">Dictation: your phone\'s speech service, over the network.</string>
+    <string name="wk_now_dictation_none">Dictation: nothing on this phone can do it yet.</string>
+    <string name="wk_now_refine_wavekey">Text cleanup: WaveKey\'s model, on this phone.</string>
+    <string name="wk_now_refine_device_ai">Text cleanup: this phone\'s own text AI.</string>
+    <string name="wk_now_refine_deterministic">Text cleanup: the built-in rules, which need no model.</string>
+    <string name="wk_nano_absent">This phone does not have Gemini Nano, so AI text cleanup needs WaveKey\'s own model. Punctuation, casing and filler removal work without it.</string>
+
+    <string name="wk_door_voice_default">Dictation is ready. Private mode is off.</string>
+
+    <!-- The models screen agrees with the chooser -->
+    <string name="wk_private_header_on">These two add up to private mode, which is on.</string>
+    <string name="wk_private_header_partly">One of these is installed, so private mode is partly on.</string>
+    <string name="wk_private_header_off">Private mode is off. Installing these turns it on.</string>
+    <string name="wk_private_header_ready">These are installed, and private mode is off. Turning it back on needs no download.</string>
+    <string name="wk_private_header_off_models">One of these is installed, and private mode is off.</string>
+
+    <!-- Setup, last screen -->
+    <string name="setup_privacy_title">How your voice is handled</string>
+    <string name="setup_privacy_body">Out of the box, the audio of what you say is sent to Google to be turned into text — the same service your phone\'s other voice input uses. It is fast and there is nothing to download.\n\nIf you would rather nothing left the phone, WaveKey can do all of it here instead. That needs a %1$s download and about that much storage, and you can set it up now or any time from Voice settings.</string>
+    <!-- The same screen on a phone whose own recognizer works offline: the fork's promise is
+         not broken there, and saying it is would be the disclosure lying in the other
+         direction. -->
+    <string name="setup_privacy_body_local">Out of the box, what you say is turned into text by your phone\'s own recognizer, offline — nothing is sent to Google. Text cleanup uses your phone\'s built-in AI where it has one.\n\nWaveKey can do all of it with its own models instead, which stays on this phone whatever happens to your phone\'s recognizer. That needs a %1$s download and about that much storage, and you can set it up now or any time from Voice settings.</string>
+    <!-- The same two disclosures on an install that already has the models, where the
+         offer costs no download at all. -->
+    <string name="setup_privacy_body_ready">Out of the box, the audio of what you say is sent to Google to be turned into text — the same service your phone\'s other voice input uses. It is fast and there is nothing to download.\n\nWaveKey\'s own models are already on this phone, so if you would rather nothing left the phone at all, switching to them needs no download. You can do that now or any time from Voice settings.</string>
+    <string name="setup_privacy_body_local_ready">Out of the box, what you say is turned into text by your phone\'s own recognizer, offline — nothing is sent to Google. Text cleanup uses your phone\'s built-in AI where it has one.\n\nWaveKey\'s own models are already on this phone, so it can do all of it itself instead, whatever happens to your phone\'s recognizer. Switching needs no download, now or any time from Voice settings.</string>
+    <string name="setup_privacy_keep">Start typing</string>
+    <string name="setup_privacy_go">Go private · %1$s</string>
+</resources>

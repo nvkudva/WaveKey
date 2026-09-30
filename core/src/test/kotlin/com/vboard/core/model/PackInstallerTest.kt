@@ -498,6 +498,50 @@ class PackInstallerTest {
         assertEquals(PackState.NotInstalled, installer().stateOf(pack))
     }
 
+    // ------------------------------------------------------------- discard notes
+
+    /**
+     * Cancelling a download and reclaiming its bytes happen in two different processes: the
+     * screen cancels, the worker in `:ui` is still writing, and the per-pack lock above is a
+     * mutex in one process only. So the screen deleted the staging directory while the transfer
+     * refilled it, and a hundred megabytes of `.part` survived every cancel with no way to
+     * reclaim it. The note is the coordination the two processes do share.
+     */
+    @Test
+    fun `a discard note survives for the party that can act on it, and is read once`() {
+        val pack = pack(listOf(spec("model.onnx", body(10))))
+        val installer = installer()
+
+        assertFalse(installer.discardRequested(pack), "nothing has asked for anything yet")
+
+        installer.requestDiscard(pack)
+        assertTrue(installer.discardRequested(pack), "the worker has to find the note")
+        assertFalse(
+            installer.discardRequested(pack),
+            "and consume it, so the next cancel-by-replace keeps its resumable bytes",
+        )
+    }
+
+    @Test
+    fun `a fresh download supersedes a standing discard note`() {
+        val pack = pack(listOf(spec("model.onnx", body(10))))
+        val installer = installer()
+        installer.requestDiscard(pack)
+
+        installer.clearDiscardRequest(pack)
+
+        assertFalse(installer.discardRequested(pack))
+    }
+
+    @Test
+    fun `a discard note is not mistaken for an installed pack`() {
+        val pack = pack(listOf(spec("model.onnx", body(10))))
+        val installer = installer()
+        installer.requestDiscard(pack)
+        assertEquals(PackState.NotInstalled, installer.stateOf(pack))
+        assertEquals(0L, installer.bytesOnDisk(pack))
+    }
+
     // ---------------------------------------------------------------- bytesOnDisk
 
     @Test

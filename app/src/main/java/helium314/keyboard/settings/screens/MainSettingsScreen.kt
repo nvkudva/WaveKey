@@ -32,7 +32,9 @@ import helium314.keyboard.latin.utils.NextScreenIcon
 import helium314.keyboard.settings.SearchSettingsScreen
 import helium314.keyboard.settings.SettingsSections
 import helium314.keyboard.settings.SettingsActivity
+import com.vboard.core.model.SystemRecognizer
 import helium314.keyboard.settings.SettingsWithoutKey
+import helium314.keyboard.voice.GoogleVoiceSession
 import helium314.keyboard.settings.screens.PrivacyBreakingSettings
 import helium314.keyboard.latin.utils.Theme
 import helium314.keyboard.settings.initPreview
@@ -81,6 +83,11 @@ fun MainSettingsScreen(
             runtime == null -> stringResource(R.string.settings_door_voice_summary)
             runtime.modelStore.dictationReady(runtime.packInstaller) ->
                 stringResource(R.string.settings_door_voice_ready)
+            // WaveKey: a fresh install dictates on the platform recognizer, so
+            // the absence of our models is no longer a problem to announce. It
+            // is only "no models" where nothing at all can dictate.
+            GoogleVoiceSession.systemRecognizer(ctx) != SystemRecognizer.NONE ->
+                stringResource(R.string.wk_door_voice_default)
             else -> stringResource(R.string.settings_door_voice_no_models)
         }
         val isNight = helium314.keyboard.latin.utils.ResourceUtils.isNight(ctx.resources) &&

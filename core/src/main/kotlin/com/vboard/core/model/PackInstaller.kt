@@ -393,6 +393,50 @@ class PackInstaller(
     }
 
     /**
+     * Discards staged and partial bytes, leaving an installed payload untouched.
+     *
+     * This is what cancelling a download has to do with the half-fetched archive. Keeping it
+     * would be defensible if anything ever offered to resume it, but nothing does once the
+     * work is cancelled, so the bytes are simply unreachable storage the user cannot see and
+     * cannot reclaim — several hundred megabytes of it for one pack.
+     */
+    suspend fun discardPartial(pack: ModelPack) {
+        lockFor(pack).withLock { deleteRecursively(stagingDir(pack)) }
+    }
+
+    /**
+     * Leaves a note asking whoever is downloading [pack] to throw its partial bytes away.
+     *
+     * The per-pack lock above is a mutex in one process, and the download runs in another one:
+     * the screen that cancels cannot wait for the worker to stop writing, so it deleted the
+     * staging directory while the transfer was still filling it and the worker simply created
+     * it again. A hundred megabytes of `.part` survived every cancel that way, invisible in
+     * every list and reclaimable from nowhere.
+     *
+     * A file is the coordination both processes do share. The canceller leaves it, the worker
+     * consumes it once its own writing has stopped, and a fresh download clears it — so the
+     * note is only ever about the download that was cancelled.
+     */
+    fun requestDiscard(pack: ModelPack) {
+        runCatching {
+            Files.createDirectories(packDir(pack))
+            Files.write(discardNote(pack), byteArrayOf())
+        }
+    }
+
+    /** True when a cancel asked for [pack]'s partial bytes; clears the note. */
+    fun discardRequested(pack: ModelPack): Boolean =
+        runCatching { Files.deleteIfExists(discardNote(pack)) }.getOrDefault(false)
+
+    /** Drops any standing discard note, because a fresh download supersedes it. */
+    fun clearDiscardRequest(pack: ModelPack) {
+        runCatching { Files.deleteIfExists(discardNote(pack)) }
+    }
+
+    private fun discardNote(pack: ModelPack): Path =
+        packDir(pack).resolve("discard-v${pack.version}")
+
+    /**
      * Drops the pack's installed marker so [stateOf] reports [PackState.NotInstalled]
      * and the UI offers a re-download.
      *

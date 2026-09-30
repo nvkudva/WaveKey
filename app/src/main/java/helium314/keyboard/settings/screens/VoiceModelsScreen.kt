@@ -53,6 +53,7 @@ import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
 import helium314.keyboard.settings.SpectrumTile
 import com.vboard.app.models.ModelDownloadService
+import com.vboard.app.models.PrivateModeDownloads
 import com.vboard.app.voice.VoiceRuntime
 import com.vboard.app.voice.voiceRuntimeOrNull
 import com.vboard.core.model.ByteSize
@@ -63,11 +64,15 @@ import com.vboard.core.model.ModelCatalog
 import com.vboard.core.model.ModelPack
 import com.vboard.core.model.PackInstaller
 import com.vboard.core.model.PackState
+import com.vboard.core.model.SystemRecognizer
+import com.vboard.core.model.PrivateMode
 import helium314.keyboard.latin.R
 import com.vboard.app.settings.SettingsRepository.Defaults as VoiceDefaults
 import com.vboard.app.settings.SettingsRepository.Keys as VoiceKeys
 import com.vboard.core.model.ModelKind
 import helium314.keyboard.latin.utils.prefs
+import helium314.keyboard.voice.GoogleVoiceSession
+import helium314.keyboard.voice.PrivateModePrefs
 import helium314.keyboard.latin.utils.Theme
 import helium314.keyboard.latin.utils.previewDark
 import helium314.keyboard.latin.utils.getActivity
@@ -99,9 +104,46 @@ fun VoiceModelsScreen(
         settings = emptyList(),
     ) {
         Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(top = 8.dp)) {
+            // WaveKey: this screen is the detail view behind the private mode
+            // control, so it opens by saying which state these packs add up to.
+            // Without it the two surfaces can disagree, and a user who removes a
+            // pack here has no way to know what they just turned off.
+            PrivateModeHeader()
             VoiceModelsSection()
         }
     }
+}
+
+/** Which private mode state the packs on this screen add up to. */
+@Composable
+private fun PrivateModeHeader() {
+    val ctx = LocalContext.current
+    val runtime = remember { voiceRuntimeOrNull(ctx) } ?: return
+    // A preference write is not Compose state, and the engine preference is half of what the
+    // header says — so it is read on the same recomposition signal every other row uses.
+    val changed = (ctx.getActivity() as? SettingsActivity)?.prefChanged?.collectAsState()
+    if ((changed?.value ?: 0) < 0) return
+    val bundle = remember { PrivateModePrefs.bundleFor(PrivateModePrefs.dictationLanguage()) }
+    val liveStates by ModelDownloadService.states.collectAsState()
+    var diskStates by remember { mutableStateOf<Map<String, PackState>>(emptyMap()) }
+    LaunchedEffect(liveStates) {
+        diskStates = withContext(Dispatchers.IO) {
+            PrivateModeDownloads.diskStates(runtime.packInstaller, bundle)
+        }
+    }
+    val state = PrivateMode.resolve(
+        bundle = bundle,
+        packStates = bundle.packs.associate { pack ->
+            pack.id to (liveStates[pack.id] ?: diskStates[pack.id] ?: PackState.NotInstalled)
+        },
+        googleVoicePreferred = PrivacyBreakingSettings.googleVoiceEnabled(ctx.prefs()),
+    )
+    Text(
+        stringResource(privateModeHeader(state)),
+        style = MaterialTheme.typography.bodyMedium,
+        color = MaterialTheme.colorScheme.onSurfaceVariant,
+        modifier = Modifier.padding(horizontal = 24.dp).padding(bottom = 8.dp),
+    )
 }
 
 /**
@@ -123,17 +165,21 @@ fun VoiceModelsSection(only: ModelKind? = null, inOwnGroup: Boolean = true) {
             )
             return@Column
         }
-        val scheduled by ModelDownloadService.observeScheduledWork(context)
+        // Remembered so the poll behind this flow is not restarted on every recomposition.
+        val scheduled by remember { ModelDownloadService.observeScheduledWork(context) }
             .collectAsState(initial = emptyList())
         val liveStates by ModelDownloadService.states.collectAsState()
         for (pack in ModelCatalog.packs.filter { only == null || it.kind == only }) {
+            val row = scheduled.firstOrNull { it.packId == pack.id }
             PackRow(
                 inOwnGroup = inOwnGroup,
                 pack = pack,
                 runtime = runtime,
-                liveState = liveStates[pack.id],
-                queued = scheduled.any { it.packId == pack.id && it.waitingForNetwork },
-                running = scheduled.any { it.packId == pack.id },
+                // The scheduler's own record first: the download runs in another process, so
+                // the in-memory flow is empty here for the whole of it.
+                liveState = row?.progress ?: liveStates[pack.id],
+                queued = row?.waitingForNetwork == true,
+                running = row != null,
             )
         }
         if (only == null) Text(
@@ -156,6 +202,8 @@ private fun PackRow(
 ) {
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
+    // What the phone can do without this pack, which is what the removal dialog turns on.
+    val recognizer = remember { GoogleVoiceSession.systemRecognizer(context) }
     // Disk is the durable answer; the live flow is empty after process death.
     var diskState by remember(pack.id) { mutableStateOf<PackState>(PackState.NotInstalled) }
     var message by remember(pack.id) { mutableStateOf<String?>(null) }
@@ -225,7 +273,9 @@ private fun PackRow(
             onConfirmed = {
                 confirmRemove = false
                 scope.launch {
-                    withContext(Dispatchers.IO) { runtime.packInstaller.delete(pack) }
+                    withContext(Dispatchers.IO) {
+                        PrivateModeDownloads.delete(runtime.packInstaller, pack)
+                    }
                     diskState = PackState.NotInstalled
                     message = context.getString(R.string.wk_models_removed, size)
                 }
@@ -233,10 +283,20 @@ private fun PackRow(
             confirmButtonText = stringResource(R.string.voice_models_remove),
             title = { Text(pack.displayName) },
             content = {
+                // What removing this actually costs depends on what else can dictate, which is
+                // a probe result rather than a property of the pack. Saying "dictation stops
+                // working" on a phone whose own recognizer works — and is the engine the
+                // removal hands dictation back to — is the copy contradicting the device.
                 Text(
                     stringResource(
-                        if (pack.required) R.string.wk_models_remove_required
-                        else R.string.wk_models_remove_message,
+                        when {
+                            !pack.required -> R.string.wk_models_remove_message
+                            recognizer == SystemRecognizer.ON_DEVICE ->
+                                R.string.wk_models_remove_required_local
+                            recognizer == SystemRecognizer.NETWORK_ONLY ->
+                                R.string.wk_models_remove_required_google
+                            else -> R.string.wk_models_remove_required
+                        },
                         size,
                     )
                 )

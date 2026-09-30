@@ -17,10 +17,12 @@ import android.view.View
 import android.view.WindowManager
 import android.view.inputmethod.EditorInfo
 import com.vboard.app.settings.SettingsRepository
+import com.vboard.app.models.PrivateModeDownloads
 import com.vboard.app.voice.VoiceEngines
 import com.vboard.app.voice.VoiceErrorAction
 import com.vboard.app.voice.VoiceRuntime
 import com.vboard.app.voice.VoiceSessionController
+import com.vboard.core.model.PrivateMode
 import com.vboard.core.session.VoiceMetrics
 import com.vboard.core.text.CommitPlanner
 import com.vboard.core.text.FieldKind
@@ -254,7 +256,9 @@ class VoiceController(
     fun toggleAsrEngine() {
         val prefs = ime.prefs()
         val toSystem = !PrivacyBreakingSettings.googleVoiceEnabled(prefs)
-        prefs.edit().putBoolean(PrivacyBreakingSettings.PREF_GOOGLE_VOICE, toSystem).apply()
+        // Marked as the user's own choice, so the automatic switch that follows a
+        // model install does not quietly undo what they just pressed.
+        PrivateModePrefs.setGoogleVoice(prefs, google = toSystem, manual = true)
         val message = ime.getString(
             when {
                 toSystem -> R.string.asr_engine_system
@@ -278,6 +282,30 @@ class VoiceController(
      */
     private fun fallbackWouldRun() =
         !runtime.modelStore.dictationReady(runtime.packInstaller) && googleSession.onDeviceAvailable()
+
+    /**
+     * WaveKey: true when this press would send audio to the device's speech
+     * service and the user has not been told that yet.
+     *
+     * Ordered cheapest first: the preference, then the recorded answer, and only
+     * then the probe and the disk read. On every device with an offline
+     * recognizer — and in private mode — this returns on the first line.
+     */
+    private fun networkDisclosureOwed(): Boolean {
+        val prefs = ime.prefs()
+        if (!PrivacyBreakingSettings.googleVoiceEnabled(prefs)) return false
+        if (PrivateModePrefs.networkConsentRecorded(prefs)) return false
+        val backends = PrivateMode.backends(
+            capabilities = PrivateModeDownloads.capabilities(
+                ime,
+                GoogleVoiceSession.systemRecognizer(ime),
+            ),
+            googleVoicePreferred = true,
+            localSpeechInstalled = runtime.modelStore.dictationReady(runtime.packInstaller),
+            localRefinerInstalled = runtime.modelStore.refinerModelPath(runtime.packInstaller) != null,
+        )
+        return PrivateMode.networkDisclosureOwed(backends, consentRecorded = false)
+    }
 
     /** End the utterance on whichever backend is running it. */
     private fun stopAndFinalize() {
@@ -314,6 +342,15 @@ class VoiceController(
 
     fun start() {
         if (!fieldKind.allowsVoice) return
+        // WaveKey: on a device whose only recognizer is the network one, the
+        // user is told that audio leaves the phone before any is captured. The
+        // disclosure owns the session: nothing starts until it is answered, and
+        // declining it starts nothing at all.
+        if (networkDisclosureOwed()) {
+            NetworkVoiceConsentActivity.launch(ime)
+            return
+        }
+        PrivateModePrefs.recordVoiceSession(ime.prefs())
         if (!holdScoped) session.setEndpointingEnabled(true)
         isActive = true
         sessionPackage = ime.currentInputEditorInfo?.packageName
