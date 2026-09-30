@@ -54,3 +54,7 @@
 - [ ] Architecture review (#10, medium): the app-side controllers are bound to the concrete LatinIME and cannot be tested — depend on a narrow host interface instead.
 - [ ] Architecture review (#11, low): failures cross the process boundary as Bundle string keys rather than a typed result — define a parcelable result type.
 - [x] Architecture review (#12, low): preload()'s return value is discarded, so model warm-up failures are invisible — RemoteRefiner.preload returns Boolean and the caller logs a refiner that warmed nothing.
+- [ ] Private mode QA-14: verify the Failed download state offers Cancel (Failed state now reachable after 70e87989; never re-tested).
+- [ ] Private mode NEW-4b: on a device with no platform recognizer, dictation copy in the private block and the voice section still contradict each other.
+- [ ] Private mode regression tests: download state read from WorkManager (NEW-1) and Go private clearing the manual Google flag (NEW-2).
+- [ ] Private mode QA round 3 on e1f71586: re-test NEW-1, NEW-2, QA-8, QA-12, QA-15, NEW-3, NEW-4 on the emulator; also the refiner-only partly-on case and the "engine local, no speech pack" radio combination.
