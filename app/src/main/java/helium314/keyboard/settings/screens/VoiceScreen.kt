@@ -25,6 +25,8 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.runtime.collectAsState
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.produceState
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.selection.selectable
 import androidx.compose.foundation.selection.selectableGroup
@@ -51,6 +53,8 @@ import com.vboard.core.model.SystemRecognizer
 import com.vboard.core.model.ModelCatalog
 import com.vboard.core.model.ModelKind
 import com.vboard.core.session.SilenceTimeout
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
 import helium314.keyboard.latin.R
 import helium314.keyboard.voice.GoogleVoiceSession
 import helium314.keyboard.voice.PrivateModePrefs
@@ -89,7 +93,19 @@ fun VoiceScreen(
     // Gemini Nano's absence affects text cleanup only, so it is said here rather
     // than as an asterisk on the mode rows: the deterministic pass still runs,
     // and WaveKey's own model is what adds the rest.
-    val nanoAbsent = DeviceAiProbe.capability(LocalContext.current) != DeviceAi.AVAILABLE
+    //
+    // Only while that model is still missing, though. It is a reason to download
+    // something, and once the thing is downloaded and running it contradicted the
+    // line a few rows above it, which already said text cleanup uses WaveKey's
+    // model on this phone.
+    val ctx = LocalContext.current
+    val refinerInstalled by produceState(false) {
+        value = withContext(Dispatchers.IO) {
+            voiceRuntimeOrNull(ctx)?.let { it.modelStore.refinerModelPath(it.packInstaller) } != null
+        }
+    }
+    val nanoAbsent = !refinerInstalled &&
+        DeviceAiProbe.capability(ctx) != DeviceAi.AVAILABLE
     // Grouped by what each setting acts on: the speech-to-text half, then the
     // clean-up half, then the two rows that belong to neither.
     val speech = listOfNotNull(

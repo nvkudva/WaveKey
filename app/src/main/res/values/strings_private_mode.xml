@@ -127,6 +127,10 @@
          not broken there, and saying it is would be the disclosure lying in the other
          direction. -->
     <string name="setup_privacy_body_local">Out of the box, what you say is turned into text by your phone\'s own recognizer, offline — nothing is sent to Google. Text cleanup uses your phone\'s built-in AI where it has one.\n\nWaveKey can do all of it with its own models instead, which stays on this phone whatever happens to your phone\'s recognizer. That needs a %1$s download and about that much storage, and you can set it up now or any time from Voice settings.</string>
+    <!-- The same two disclosures on an install that already has the models, where the
+         offer costs no download at all. -->
+    <string name="setup_privacy_body_ready">Out of the box, the audio of what you say is sent to Google to be turned into text — the same service your phone\'s other voice input uses. It is fast and there is nothing to download.\n\nWaveKey\'s own models are already on this phone, so if you would rather nothing left the phone at all, switching to them needs no download. You can do that now or any time from Voice settings.</string>
+    <string name="setup_privacy_body_local_ready">Out of the box, what you say is turned into text by your phone\'s own recognizer, offline — nothing is sent to Google. Text cleanup uses your phone\'s built-in AI where it has one.\n\nWaveKey\'s own models are already on this phone, so it can do all of it itself instead, whatever happens to your phone\'s recognizer. Switching needs no download, now or any time from Voice settings.</string>
     <string name="setup_privacy_keep">Start typing</string>
     <string name="setup_privacy_go">Go private · %1$s</string>
 </resources>

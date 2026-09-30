@@ -45,6 +45,8 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.produceState
+import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
@@ -58,7 +60,10 @@ import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
 import androidx.core.content.ContextCompat
+import com.vboard.app.models.PrivateModeDownloads
+import com.vboard.app.voice.voiceRuntimeOrNull
 import com.vboard.core.model.ByteSize
+import com.vboard.core.model.PackState
 import com.vboard.core.model.SystemRecognizer
 import helium314.keyboard.latin.R
 import helium314.keyboard.latin.utils.JniUtils
@@ -70,6 +75,7 @@ import helium314.keyboard.voice.PrivateModePrefs
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 
 private const val LAST_STEP = 4
 
@@ -201,11 +207,27 @@ fun WelcomeWizard(
                             // the size and the states live; it starts no download here,
                             // because a decision worth a gigabyte belongs next to the
                             // control that can cancel it.
-                            val size = ByteSize.format(
-                                PrivateModePrefs
-                                    .bundleFor(PrivateModePrefs.dictationLanguage())
-                                    .downloadBytes(emptySet())
-                            )
+                            // What it would actually cost here, not what it costs on a fresh
+                            // phone: an install that already has the models was offered
+                            // "Download · 980 MB" for bytes it was not going to fetch.
+                            val bundle = remember {
+                                PrivateModePrefs.bundleFor(PrivateModePrefs.dictationLanguage())
+                            }
+                            val installedIds by produceState(null as Set<String>?, bundle) {
+                                value = withContext(Dispatchers.IO) {
+                                    voiceRuntimeOrNull(ctx)?.let { runtime ->
+                                        PrivateModeDownloads
+                                            .diskStates(runtime.packInstaller, bundle)
+                                            .filterValues { it == PackState.Installed }
+                                            .keys
+                                    } ?: emptySet()
+                                }
+                            }
+                            // Nothing is claimed until the disk has answered: quoting a size
+                            // that is about to change is the bug this replaces.
+                            val installed = installedIds ?: return@Column
+                            val ready = bundle.isComplete(installed)
+                            val size = ByteSize.format(bundle.downloadBytes(installed))
                             val goPrivate = {
                                 SettingsDestination.navigateTo(SettingsDestination.Voice)
                                 close()
@@ -219,7 +241,11 @@ fun WelcomeWizard(
                                     title = stringResource(R.string.setup_privacy_title),
                                     instruction = stringResource(R.string.wk_private_required),
                                     icon = painterResource(R.drawable.ic_settings_voice),
-                                    actionText = stringResource(R.string.wk_private_required_go, size),
+                                    actionText = if (ready) {
+                                        stringResource(R.string.wk_private_go_ready)
+                                    } else {
+                                        stringResource(R.string.wk_private_required_go, size)
+                                    },
                                     action = goPrivate,
                                 )
                                 SecondaryAction(stringResource(R.string.setup_voice_skip_action), finish)
@@ -229,20 +255,31 @@ fun WelcomeWizard(
                                 // than the sentence that is true on most phones.
                                 StepCard(
                                     title = stringResource(R.string.setup_privacy_title),
-                                    instruction = stringResource(
-                                        if (recognizer == SystemRecognizer.ON_DEVICE) {
-                                            R.string.setup_privacy_body_local
-                                        } else {
-                                            R.string.setup_privacy_body
-                                        },
-                                        size,
-                                    ),
+                                    instruction = if (ready) {
+                                        stringResource(
+                                            if (recognizer == SystemRecognizer.ON_DEVICE) {
+                                                R.string.setup_privacy_body_local_ready
+                                            } else {
+                                                R.string.setup_privacy_body_ready
+                                            },
+                                        )
+                                    } else {
+                                        stringResource(
+                                            if (recognizer == SystemRecognizer.ON_DEVICE) {
+                                                R.string.setup_privacy_body_local
+                                            } else {
+                                                R.string.setup_privacy_body
+                                            },
+                                            size,
+                                        )
+                                    },
                                     icon = painterResource(R.drawable.ic_settings_voice),
                                     actionText = stringResource(R.string.setup_privacy_keep),
                                     action = finish,
                                 )
                                 SecondaryAction(
-                                    stringResource(R.string.setup_privacy_go, size),
+                                    if (ready) stringResource(R.string.wk_private_go_ready)
+                                    else stringResource(R.string.setup_privacy_go, size),
                                     goPrivate,
                                 )
                             }
