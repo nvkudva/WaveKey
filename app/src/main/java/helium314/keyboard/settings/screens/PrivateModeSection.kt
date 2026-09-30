@@ -39,6 +39,7 @@ import androidx.compose.ui.unit.dp
 import com.vboard.app.models.ModelDownloadService
 import com.vboard.app.models.PrivateModeDownloads
 import com.vboard.app.voice.voiceRuntimeOrNull
+import com.vboard.core.model.ActiveBackends
 import com.vboard.core.model.ByteSize
 import com.vboard.core.model.DictationBackend
 import com.vboard.core.model.DownloadDecision
@@ -102,8 +103,11 @@ fun PrivateModeSection() {
     val recognizer = remember { GoogleVoiceSession.systemRecognizer(ctx) }
     val capabilities = remember { PrivateModeDownloads.capabilities(ctx, recognizer) }
 
-    val scheduled by ModelDownloadService.observeScheduledWork(ctx)
-        .collectAsState(initial = emptyList())
+    // Remembered, not rebuilt: the flow polls, so handing `collectAsState` a new instance on
+    // every recomposition would restart the poll on every frame it produces.
+    val downloads by remember { ModelDownloadService.observeDownloads(ctx) }
+        .collectAsState(initial = ModelDownloadService.Downloads())
+    val scheduled = downloads.scheduled
     val liveStates by ModelDownloadService.states.collectAsState()
     var diskStates by remember { mutableStateOf<Map<String, PackState>>(emptyMap()) }
     var usableSpace by remember { mutableStateOf<Long?>(null) }
@@ -118,11 +122,32 @@ fun PrivateModeSection() {
 
     val scheduledIds = scheduled.map { it.packId }.toSet()
     val waitingIds = scheduled.filter { it.waitingForNetwork }.map { it.packId }.toSet()
+    val scheduledProgress = scheduled.mapNotNull { row -> row.progress?.let { row.packId to it } }
+        .toMap()
     // Disk wins once nothing is scheduled: a worker's last published state is what it *did*,
     // and a pack installed where this process cannot read it must not keep reading Installed.
+    //
+    // While something *is* scheduled, the scheduler's own record of it comes first. The
+    // download runs in `:ui` and this screen runs in the keyboard's process, so the in-memory
+    // state flow below is a different map that the worker never reaches; reading progress from
+    // it alone is why the control stayed in Queued for the whole of a 980 MB download while the
+    // notification counted percentages. It is kept as the second source because in a single
+    // process it is the fresher of the two.
     val packStates = bundle.packs.associate { pack ->
         val disk = diskStates[pack.id] ?: PackState.NotInstalled
-        pack.id to if (pack.id in scheduledIds) liveStates[pack.id] ?: disk else disk
+        val failure = downloads.failures[pack.id]?.let { PackState.Failed(it) }
+        pack.id to when {
+            pack.id in scheduledIds -> scheduledProgress[pack.id] ?: liveStates[pack.id] ?: disk
+            // A pack that is on disk is on disk, whatever an older run of it did.
+            disk == PackState.Installed -> disk
+            // Nothing is running and the last run of this pack failed for a reason the user is
+            // owed. It stands until they retry or say to leave it, which is what §5.3.7 asks
+            // for and what an unreadable in-memory publish could never deliver.
+            failure != null -> failure
+            // Otherwise disk is the durable answer, and the only one: a worker's last published
+            // state is what it *did*, and it must not keep a removed pack reading Installed.
+            else -> disk
+        }
     }
     val installedIds = bundle.packs
         .filter { packStates[it.id] == PackState.Installed }
@@ -184,8 +209,16 @@ fun PrivateModeSection() {
             meteredConsent = meteredConsent,
             bytes = missingBytes,
         )
+        // Asking for private mode is the choice, not the moment the download lands. The engine
+        // itself cannot move yet — there is no recognizer to move it to — but the standing
+        // choice of the platform recognizer has to be withdrawn here, because the sync that
+        // runs when the pack arrives will not overrule it. Leaving it in place meant a user who
+        // had once turned private mode off keeping the models could download both packs, watch
+        // them install, and still be on Google with a Go private button in front of them.
+        PrivateModePrefs.requestPrivateMode(prefs)
         PrivateModeDownloads.start(
             context = ctx,
+            installer = runtime.packInstaller,
             bundle = bundle,
             installedPackIds = installedIds,
             allowMetered = (decision as? DownloadDecision.Enqueue)?.allowMetered ?: meteredConsent,
@@ -258,7 +291,7 @@ fun PrivateModeSection() {
         )
         PreferenceGroupDivider()
         Text(
-            disclosure(state, recognizer, google),
+            disclosure(backends, recognizer),
             style = MaterialTheme.typography.bodySmall,
             color = MaterialTheme.colorScheme.onSurfaceVariant,
             modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp),
@@ -606,17 +639,28 @@ private fun privateRowDescription(
     else -> stringResource(R.string.wk_mode_private_missing, missingText)
 }
 
+/**
+ * The disclosure, read off the backend that would actually run.
+ *
+ * It used to read the resolved state and the preference instead, which let it contradict the
+ * status line immediately below it: on a phone with no recognizer of its own and the speech
+ * pack installed, it announced that dictation still needs WaveKey's models directly above
+ * "Dictation: WaveKey's model, on this phone." The rule is the same one the rest of this
+ * feature follows — the copy follows the probe, and here the probe's answer is [backends].
+ */
 @Composable
 private fun disclosure(
-    state: PrivateModeState,
+    backends: ActiveBackends,
     recognizer: SystemRecognizer,
-    google: Boolean,
-): String = when {
-    recognizer == SystemRecognizer.NONE && state !is PrivateModeState.On ->
-        stringResource(R.string.wk_private_required)
-    !google -> stringResource(R.string.wk_disclosure_private)
-    recognizer == SystemRecognizer.ON_DEVICE -> stringResource(R.string.wk_disclosure_google_local)
-    else -> stringResource(R.string.wk_disclosure_google)
+): String = when (backends.dictation) {
+    DictationBackend.WAVEKEY -> stringResource(R.string.wk_disclosure_private)
+    DictationBackend.SYSTEM_ON_DEVICE -> stringResource(R.string.wk_disclosure_google_local)
+    DictationBackend.SYSTEM_NETWORK -> stringResource(R.string.wk_disclosure_google)
+    // Nothing can dictate: on a phone with no recognizer that is the sentence that explains
+    // the whole screen, and nothing is being sent anywhere in the meantime.
+    DictationBackend.NONE ->
+        if (recognizer == SystemRecognizer.NONE) stringResource(R.string.wk_private_required)
+        else stringResource(R.string.wk_disclosure_private)
 }
 
 /**

@@ -55,18 +55,21 @@ object PrivateModeDownloads {
      */
     fun start(
         context: Context,
+        installer: PackInstaller,
         bundle: PrivateModeBundle,
         installedPackIds: Set<String>,
         allowMetered: Boolean,
     ) {
-        // Every pack in the bundle carries the same combined figures, so the notification one
-        // of them raises counts the download the user actually asked for rather than its own
-        // share of it.
+        // Every pack in the bundle is told what the whole bundle is, so the notification one of
+        // them raises counts the download the user actually asked for rather than its own share
+        // of it.
         val progress = ModelDownloadService.BundleProgress(
-            bytesDone = installedBytes(bundle, installedPackIds),
-            bytesTotal = bundle.totalBytes,
+            packIds = bundle.packs.map { it.id },
+            installedPackIds = installedPackIds,
         )
         for (pack in bundle.missingPacks(installedPackIds)) {
+            // A download supersedes any standing "throw these away" note left by a cancel.
+            installer.clearDiscardRequest(pack)
             if (allowMetered) {
                 ModelDownloadService.startAllowingMetered(context, pack.id, progress)
             } else {
@@ -89,8 +92,14 @@ object PrivateModeDownloads {
         bundle: PrivateModeBundle,
         installedPackIds: Set<String>,
     ) {
+        // The note goes down before the cancel, because the worker that is still writing is
+        // in another process and reads it on its way out. Deleting the directory from here is
+        // the other half: it is all that happens for a pack that was only ever queued, and a
+        // running worker's own discard cleans up whatever it wrote after this.
+        val missing = bundle.missingPacks(installedPackIds)
+        missing.forEach { installer.requestDiscard(it) }
         ModelDownloadService.cancel(context, bundle.packs.map { it.id })
-        bundle.missingPacks(installedPackIds).forEach { installer.discardPartial(it) }
+        missing.forEach { installer.discardPartial(it) }
     }
 
     /** Removes exactly the bundle's packs and nothing else. */

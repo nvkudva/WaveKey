@@ -3,6 +3,7 @@ package helium314.keyboard.voice
 
 import android.content.Context
 import androidx.test.core.app.ApplicationProvider
+import com.vboard.core.model.PrivateMode
 import helium314.keyboard.settings.screens.PrivacyBreakingSettings
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
@@ -55,6 +56,60 @@ class PrivateModePrefsTest {
         assertFalse(
             "turning private mode off later has to ask about the network again",
             PrivateModePrefs.networkConsentRecorded(prefs),
+        )
+    }
+
+    /**
+     * The second QA round's other blocker. Once the user had turned private mode off keeping
+     * the models, "Go private" could never turn it back on: pressing it with the packs missing
+     * started a download and wrote nothing, and the sync that moves the engine when a pack
+     * lands refuses to overrule a standing choice of the platform recognizer. Both packs
+     * installed and the screen still showed Google selected with a Go private button.
+     */
+    @Test
+    fun `asking for private mode withdraws the standing choice of the platform recognizer`() {
+        PrivateModePrefs.setGoogleVoice(prefs, google = true, manual = true)
+
+        PrivateModePrefs.requestPrivateMode(prefs)
+
+        assertTrue(
+            "the engine cannot move before the recognizer pack exists",
+            prefs.getBoolean(PrivacyBreakingSettings.PREF_GOOGLE_VOICE, false),
+        )
+        assertFalse(
+            "the standing choice has to go, or the engine sync refuses to move when it lands",
+            prefs.getBoolean(PrivacyBreakingSettings.PREF_GOOGLE_VOICE_MANUAL, false),
+        )
+        assertTrue(
+            "which is exactly what the sync then reads",
+            PrivateMode.adoptsLocalEngine(
+                googleVoicePreferred =
+                    prefs.getBoolean(PrivacyBreakingSettings.PREF_GOOGLE_VOICE, false),
+                platformRecognizerChosen =
+                    prefs.getBoolean(PrivacyBreakingSettings.PREF_GOOGLE_VOICE_MANUAL, false),
+                localSpeechInstalled = true,
+            ),
+        )
+    }
+
+    /**
+     * The download path has to make that write, and it is the only path that can: the instant
+     * one selects private mode outright. Asserted against the source because the call sits in a
+     * Compose callback that no unit test can press.
+     */
+    @Test
+    fun `the download path records the request before it enqueues anything`() {
+        val source = File(
+            "src/main/java/helium314/keyboard/settings/screens/PrivateModeSection.kt",
+        )
+        assertTrue("source not found at ${source.absolutePath}", source.exists())
+        val enqueue = source.readText()
+            .substringAfter("fun enqueue(meteredConsent: Boolean)")
+            .substringBefore("fun goPrivate()")
+        assertTrue(
+            "going private by download must withdraw the platform recognizer choice, or the " +
+                "engine never follows the packs that are downloaded",
+            enqueue.contains("PrivateModePrefs.requestPrivateMode"),
         )
     }
 

@@ -15,6 +15,7 @@ import com.vboard.core.model.GoogleVoiceMigration
 import com.vboard.core.model.InstallHistory
 import com.vboard.core.model.ModelCatalog
 import com.vboard.core.model.PackState
+import com.vboard.core.model.PrivateMode
 import com.vboard.core.model.PrivateModeBundle
 import com.vboard.core.model.migrateGoogleVoiceDefault
 import helium314.keyboard.latin.RichInputMethodManager
@@ -82,7 +83,6 @@ object PrivateModePrefs {
      */
     fun syncEngineToInstalledPacks(context: Context, language: String) {
         val prefs = context.prefs()
-        if (prefs.getBoolean(PrivacyBreakingSettings.PREF_GOOGLE_VOICE_MANUAL, false)) return
         val runtime = voiceRuntimeOrNull(context) ?: return
         val bundle = PrivateModeDownloads.bundleFor(language)
         val installedIds = bundle.packs
@@ -90,10 +90,32 @@ object PrivateModePrefs {
                 runCatching { runtime.packInstaller.stateOf(it) }.getOrNull() == PackState.Installed
             }
             .mapTo(mutableSetOf()) { it.id }
-        if (!bundle.hasLocalSpeech(installedIds)) return
-        if (!PrivacyBreakingSettings.googleVoiceEnabled(prefs)) return
-        prefs.edit { putBoolean(PrivacyBreakingSettings.PREF_GOOGLE_VOICE, false) }
+        val adopt = PrivateMode.adoptsLocalEngine(
+            googleVoicePreferred = PrivacyBreakingSettings.googleVoiceEnabled(prefs),
+            platformRecognizerChosen = prefs.getBoolean(
+                PrivacyBreakingSettings.PREF_GOOGLE_VOICE_MANUAL, false,
+            ),
+            localSpeechInstalled = bundle.hasLocalSpeech(installedIds),
+        )
+        if (!adopt) return
+        // The same write going private makes when the models are already there, so arriving at
+        // private mode by download and arriving at it instantly leave the install in one state.
+        setGoogleVoice(prefs, google = false, manual = false)
         Log.i(TAG, "recognizer pack installed; dictation switched to WaveKey's own")
+    }
+
+    /**
+     * Records that the user has asked for private mode, before its models exist.
+     *
+     * The engine cannot move yet: there is nothing to move it to until the recognizer pack
+     * lands, and [syncEngineToInstalledPacks] is what moves it then. What this writes is the
+     * other half of the same answer — that the platform recognizer is no longer the user's
+     * standing choice. That mark is the one thing the sync refuses to overrule, so a user who
+     * had turned private mode off keeping the models could otherwise press Go private, pay for
+     * the whole download, see both packs install, and still be on Google.
+     */
+    fun requestPrivateMode(prefs: SharedPreferences) {
+        prefs.edit { putBoolean(PrivacyBreakingSettings.PREF_GOOGLE_VOICE_MANUAL, false) }
     }
 
     /**

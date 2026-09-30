@@ -112,11 +112,103 @@ class PrivateModeTest {
         assertTrue(state.fraction > 0.4 && state.fraction < 0.6)
     }
 
+    /**
+     * The regression behind the second QA round's first blocker: the control sat in Queued for
+     * the whole of two complete 980 MB downloads. The resolver was never the broken half — the
+     * progress simply never reached it — so this pins the combination the screen actually
+     * feeds it, a pack that is both scheduled and reporting bytes.
+     */
+    @Test
+    fun `a scheduled pack that is reporting bytes is Downloading, never Queued`() {
+        val state = PrivateMode.resolve(
+            bundle(),
+            mapOf(speech.id to PackState.Downloading(speech.totalBytes / 2, speech.totalBytes)),
+            scheduledPackIds = setOf(speech.id, refiner.id),
+            waitingForNetworkPackIds = setOf(refiner.id),
+        )
+        assertIs<PrivateModeState.Downloading>(state)
+        assertEquals(speech.totalBytes / 2, state.bytesDone)
+    }
+
+    /**
+     * One download, one set of numbers. The notification and the progress bar are the same
+     * download reported twice, so they run the same arithmetic over the same states; two
+     * surfaces each summing their own share is how a notification came to read 21% beside a
+     * screen showing no percentage at all.
+     */
+    @Test
+    fun `the combined figure counts what is installed, what is verifying and what is in flight`() {
+        val states = mapOf(
+            speech.id to PackState.Verifying,
+            refiner.id to PackState.Downloading(1_000L, refiner.totalBytes),
+        )
+        assertEquals(
+            speech.totalBytes + 1_000L,
+            PrivateMode.downloadedBytes(bundle().packs, states),
+        )
+        assertEquals(0L, PrivateMode.downloadedBytes(bundle().packs, emptyMap()))
+    }
+
+    @Test
+    fun `a pack past downloading no longer drags the bar backwards`() {
+        val state = PrivateMode.resolve(
+            bundle(),
+            mapOf(
+                speech.id to PackState.Verifying,
+                refiner.id to PackState.Downloading(0L, refiner.totalBytes),
+            ),
+        )
+        assertIs<PrivateModeState.Downloading>(state)
+        assertEquals(speech.totalBytes, state.bytesDone)
+    }
+
     @Test
     fun `verifying is Installing, not a percentage`() {
         assertEquals(
             PrivateModeState.Installing,
             PrivateMode.resolve(bundle(), mapOf(speech.id to PackState.Verifying)),
+        )
+    }
+
+    // ----------------------------------------------------------- engine adoption
+
+    /**
+     * The second QA round's other blocker: once the user had turned private mode off keeping
+     * the models, "Go private" could never turn it on again. Both packs downloaded, both
+     * installed, and the engine stayed on Google — because the sync that moves the engine
+     * refuses to overrule a standing choice of the platform recognizer, and nothing on the
+     * download path withdrew that choice.
+     */
+    @Test
+    fun `a standing choice of the platform recognizer is never overruled by an install`() {
+        assertFalse(
+            PrivateMode.adoptsLocalEngine(
+                googleVoicePreferred = true,
+                platformRecognizerChosen = true,
+                localSpeechInstalled = true,
+            ),
+        )
+    }
+
+    @Test
+    fun `withdrawing that choice is what lets the installed pack take over`() {
+        assertTrue(
+            PrivateMode.adoptsLocalEngine(
+                googleVoicePreferred = true,
+                platformRecognizerChosen = false,
+                localSpeechInstalled = true,
+            ),
+        )
+    }
+
+    @Test
+    fun `nothing is adopted before the recognizer pack exists`() {
+        assertFalse(
+            PrivateMode.adoptsLocalEngine(
+                googleVoicePreferred = true,
+                platformRecognizerChosen = false,
+                localSpeechInstalled = false,
+            ),
         )
     }
 

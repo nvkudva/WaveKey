@@ -287,12 +287,9 @@ object PrivateMode {
             return PrivateModeState.Unavailable(PrivateModeBlocker.STORAGE)
         }
 
-        val downloading = bundle.packs.mapNotNull { packStates[it.id] as? PackState.Downloading }
-        if (downloading.isNotEmpty()) {
+        if (bundle.packs.any { packStates[it.id] is PackState.Downloading }) {
             return PrivateModeState.Downloading(
-                // Installed packs count as complete: the bar is about the bundle, and a bar
-                // that restarts at zero for the second pack teaches the user it is lying.
-                bytesDone = installed.sumOf { it.totalBytes } + downloading.sumOf { it.bytesDone },
+                bytesDone = downloadedBytes(bundle.packs, packStates),
                 bytesTotal = bundle.totalBytes,
             )
         }
@@ -324,6 +321,42 @@ object PrivateMode {
         }
         return PrivateModeState.Off
     }
+
+    /**
+     * How many of [packs]' bytes the user already has, from per-pack states.
+     *
+     * The one formula behind every percentage the feature shows. The progress bar on the
+     * screen and the percentage in the download notification are the same download, so they
+     * are the same arithmetic over the same inputs: a pack that is installed, or past
+     * downloading and being verified, counts for all of its bytes, and a pack in flight counts
+     * for what has arrived. Two surfaces each summing their own share of it is how a
+     * notification came to read 21% next to a screen reading nothing at all.
+     */
+    fun downloadedBytes(packs: List<ModelPack>, packStates: Map<String, PackState>): Long =
+        packs.sumOf { pack ->
+            when (val state = packStates[pack.id]) {
+                PackState.Installed, PackState.Verifying -> pack.totalBytes
+                is PackState.Downloading -> state.bytesDone
+                else -> 0L
+            }
+        }
+
+    /**
+     * Whether an installed recognizer pack may move dictation onto WaveKey's own engine.
+     *
+     * @param platformRecognizerChosen the user's standing choice of the platform recognizer
+     *   (`PREF_GOOGLE_VOICE_MANUAL`), which this sync must never overrule.
+     *
+     * The standing choice is why asking for private mode has to withdraw it at the moment of
+     * asking. Someone who turned private mode off keeping the models has that choice on
+     * record; if pressing "go private" leaves it there, the download finishes, both packs land
+     * and this refuses to move the engine — so private mode can never be turned on again.
+     */
+    fun adoptsLocalEngine(
+        googleVoicePreferred: Boolean,
+        platformRecognizerChosen: Boolean,
+        localSpeechInstalled: Boolean,
+    ): Boolean = localSpeechInstalled && googleVoicePreferred && !platformRecognizerChosen
 
     /**
      * Which backends a mic press would use right now.

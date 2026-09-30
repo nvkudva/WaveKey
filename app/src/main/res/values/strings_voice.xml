@@ -138,5 +138,7 @@
     <string name="wk_models_removed">Removed · frees %1$s</string>
     <string name="wk_models_remove_message">Remove this model? It frees %1$s, and you will have to download it again to use it.</string>
     <string name="wk_models_remove_required">Remove this model? Dictation stops working on this phone until you download it again. It frees %1$s.</string>
+    <string name="wk_models_remove_required_local">Remove this model? Dictation goes back to your phone\'s own recognizer, which handles it offline. It frees %1$s, and you can download the model again later.</string>
+    <string name="wk_models_remove_required_google">Remove this model? Dictation goes back to Google, and your voice will be sent there again. It frees %1$s, and you can download the model again later.</string>
     <string name="wk_models_retry">Retry</string>
 </resources>
